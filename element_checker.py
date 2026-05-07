@@ -6,8 +6,11 @@ import struct
 import threading
 import time
 import tkinter as tk
+import zipfile
 from dataclasses import dataclass
+from pathlib import Path
 from tkinter import messagebox, ttk
+from xml.etree import ElementTree
 
 try:
     import serial
@@ -42,6 +45,7 @@ TELEMETRY_BASE_ADDRESS = 0x0500
 TELEMETRY_CHANNELS = 16
 TELEMETRY_REGISTERS_PER_CHANNEL = 2
 DEVICE_COUNT = 3
+SETTINGS_FILE = "element_checker_settings.xlsx"
 
 
 @dataclass
@@ -58,6 +62,12 @@ class ModbusResult:
     valid: bool
     message: str
     data: bytes = b""
+
+
+@dataclass
+class SensorSettings:
+    name: str
+    used: bool
 
 
 def modbus_crc(data: bytes) -> bytes:
@@ -156,6 +166,109 @@ def decode_tm5104_temperature(data: bytes) -> float:
     return value
 
 
+def _default_sensor_settings() -> list[list[SensorSettings]]:
+    return [
+        [SensorSettings(name=str(channel), used=True) for channel in range(1, TELEMETRY_CHANNELS + 1)]
+        for _device in range(DEVICE_COUNT)
+    ]
+
+
+def _cell_column(cell_ref: str) -> str:
+    return "".join(char for char in cell_ref if char.isalpha())
+
+
+def _xlsx_rows(path: Path) -> list[dict[str, str]]:
+    ns = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    with zipfile.ZipFile(path) as archive:
+        shared_strings: list[str] = []
+        if "xl/sharedStrings.xml" in archive.namelist():
+            shared_root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
+            for item in shared_root.findall("a:si", ns):
+                shared_strings.append("".join(node.text or "" for node in item.findall(".//a:t", ns)))
+
+        sheet_root = ElementTree.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+
+    rows: list[dict[str, str]] = []
+    for row in sheet_root.findall(".//a:row", ns):
+        values: dict[str, str] = {}
+        for cell in row.findall("a:c", ns):
+            cell_ref = cell.get("r", "")
+            value_node = cell.find("a:v", ns)
+            inline_node = cell.find("a:is/a:t", ns)
+            value = ""
+            if value_node is not None and value_node.text is not None:
+                value = value_node.text
+                if cell.get("t") == "s":
+                    value = shared_strings[int(value)]
+            elif inline_node is not None and inline_node.text is not None:
+                value = inline_node.text
+            values[_cell_column(cell_ref)] = value.strip()
+        rows.append(values)
+    return rows
+
+
+def _used_value(value: str) -> bool:
+    value = value.strip()
+    if value == "1":
+        return True
+    try:
+        return float(value) == 1.0
+    except ValueError:
+        return False
+
+
+def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | None]:
+    sensors = _default_sensor_settings()
+    if not path.exists():
+        return sensors, f"{path.name} not found, all sensors enabled"
+
+    try:
+        rows = _xlsx_rows(path)
+        if not rows:
+            return sensors, f"{path.name} is empty, all sensors enabled"
+
+        header_row = rows[0]
+        headers = {value.strip().lower(): column for column, value in header_row.items() if value.strip()}
+
+        group_column = headers.get("group")
+        sn_column = headers.get("sn")
+        num_column = headers.get("num")
+        name_column = headers.get("name")
+        used_column = headers.get("used")
+
+        if name_column is None or used_column is None:
+            return sensors, f"{path.name}: Name/Used columns not found, all sensors enabled"
+
+        for row in rows[1:]:
+            group_text = row.get(group_column, "") if group_column else ""
+            sn_text = row.get(sn_column, "") if sn_column else ""
+
+            if (not group_text or not sn_text) and num_column is not None:
+                num_text = row.get(num_column, "")
+                if "_" in num_text:
+                    group_text, sn_text = num_text.split("_", 1)
+
+            if not group_text or not sn_text:
+                continue
+
+            try:
+                device_index = int(float(group_text)) - 1
+                channel = int(float(sn_text))
+            except ValueError:
+                continue
+
+            if not 0 <= device_index < DEVICE_COUNT or not 1 <= channel <= TELEMETRY_CHANNELS:
+                continue
+
+            name = row.get(name_column, "").strip() or str(channel)
+            used = _used_value(row.get(used_column, ""))
+            sensors[device_index][channel - 1] = SensorSettings(name=name, used=used)
+    except Exception as exc:
+        return sensors, f"{path.name}: failed to read settings: {exc}"
+
+    return sensors, None
+
+
 class ElementCheckerApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -167,8 +280,11 @@ class ElementCheckerApp(tk.Tk):
         self.worker_lock = threading.Lock()
         self.ui_queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self.auto_poll_after_id = None
+        self.temperature_poll_running = False
         self.temperature_vars: list[list[tk.StringVar]] = []
+        self.temperature_buttons: list[list[ttk.Button]] = []
         self.settings_window: tk.Toplevel | None = None
+        self.sensor_settings, self.sensor_settings_warning = load_sensor_settings(Path(__file__).with_name(SETTINGS_FILE))
 
         self.port_var = tk.StringVar(value="COM22")
         self.baud_var = tk.StringVar(value="115200")
@@ -182,16 +298,21 @@ class ElementCheckerApp(tk.Tk):
         self.quantity_var = tk.StringVar(value="2")
         self.expected_var = tk.StringVar(value="")
         self.auto_poll_var = tk.BooleanVar(value=False)
+        self.auto_poll_interval_var = tk.StringVar(value="1000")
+        self.auto_poll_unit_var = tk.StringVar(value="ms")
+        self.auto_poll_status_var = tk.StringVar(value="Auto poll stopped")
         self.quantity_var.trace_add("write", lambda *_args: self._refresh_expected())
 
         self._build_ui()
+        if self.sensor_settings_warning:
+            self._append_log(self.sensor_settings_warning)
         self._refresh_expected()
         self.after(100, self._drain_ui_queue)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(3, weight=1)
+        self.rowconfigure(4, weight=1)
 
         top_frame = ttk.Frame(self)
         top_frame.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="ew")
@@ -224,11 +345,13 @@ class ElementCheckerApp(tk.Tk):
             ).grid(row=0, column=2, columnspan=2, padx=4, pady=(4, 2), sticky="w")
 
             device_values: list[tk.StringVar] = []
+            device_buttons: list[ttk.Button] = []
             for index in range(TELEMETRY_CHANNELS):
                 channel = index + 1
                 row = index // 4 + 1
                 column = index % 4
-                value_var = tk.StringVar(value=f"{channel}\n--")
+                sensor = self.sensor_settings[device_index][channel - 1]
+                value_var = tk.StringVar(value=self._sensor_label(device_index, channel, "--"))
                 device_values.append(value_var)
 
                 button = ttk.Button(
@@ -238,8 +361,12 @@ class ElementCheckerApp(tk.Tk):
                     command=lambda dev=device_index, selected=channel: self._request_temperature(dev, selected),
                 )
                 button.grid(row=row, column=column, padx=3, pady=3, sticky="nsew")
+                if not sensor.used:
+                    button.state(["disabled"])
+                device_buttons.append(button)
 
             self.temperature_vars.append(device_values)
+            self.temperature_buttons.append(device_buttons)
 
         action_frame = ttk.Frame(self)
         action_frame.grid(row=2, column=0, padx=12, pady=6, sticky="ew")
@@ -252,8 +379,35 @@ class ElementCheckerApp(tk.Tk):
             row=0, column=1, padx=(6, 0), sticky="ew"
         )
 
+        auto_frame = ttk.LabelFrame(self, text="Auto temperature polling")
+        auto_frame.grid(row=3, column=0, padx=12, pady=6, sticky="ew")
+        auto_frame.columnconfigure(6, weight=1)
+
+        ttk.Label(auto_frame, text="Interval").grid(row=0, column=0, padx=8, pady=8, sticky="w")
+        ttk.Entry(
+            auto_frame,
+            textvariable=self.auto_poll_interval_var,
+            width=10,
+        ).grid(row=0, column=1, padx=8, pady=8, sticky="ew")
+        ttk.Combobox(
+            auto_frame,
+            textvariable=self.auto_poll_unit_var,
+            values=("ms", "s"),
+            state="readonly",
+            width=6,
+        ).grid(row=0, column=2, padx=8, pady=8, sticky="ew")
+
+        self.auto_start_button = ttk.Button(auto_frame, text="Start measurement", command=self._start_auto_poll)
+        self.auto_start_button.grid(row=0, column=3, padx=8, pady=8, sticky="ew")
+        self.auto_stop_button = ttk.Button(auto_frame, text="Stop measurement", command=self._stop_auto_poll)
+        self.auto_stop_button.grid(row=0, column=4, padx=8, pady=8, sticky="ew")
+        self.auto_stop_button.state(["disabled"])
+        ttk.Label(auto_frame, textvariable=self.auto_poll_status_var, anchor="w").grid(
+            row=0, column=5, columnspan=2, padx=8, pady=8, sticky="ew"
+        )
+
         content = ttk.PanedWindow(self, orient="vertical")
-        content.grid(row=3, column=0, padx=12, pady=6, sticky="nsew")
+        content.grid(row=4, column=0, padx=12, pady=6, sticky="nsew")
 
         response_frame = ttk.LabelFrame(content, text="Response")
         response_frame.columnconfigure(0, weight=1)
@@ -265,6 +419,13 @@ class ElementCheckerApp(tk.Tk):
         response_scroll = ttk.Scrollbar(response_frame, orient="vertical", command=self.response_text.yview)
         response_scroll.grid(row=0, column=1, sticky="ns")
         self.response_text.configure(yscrollcommand=response_scroll.set)
+
+    def _sensor_label(self, device_index: int, channel: int, value: str) -> str:
+        name = self.sensor_settings[device_index][channel - 1].name
+        return f"{name}\n{value}"
+
+    def _set_temperature_label(self, device_index: int, channel: int, value: str) -> None:
+        self.temperature_vars[device_index][channel - 1].set(self._sensor_label(device_index, channel, value))
 
     def _open_settings(self) -> None:
         if self.settings_window is not None and self.settings_window.winfo_exists():
@@ -356,10 +517,6 @@ class ElementCheckerApp(tk.Tk):
             row=1, column=6, padx=8, pady=8, sticky="ew"
         )
 
-        ttk.Checkbutton(modbus_frame, text="Auto", variable=self.auto_poll_var, command=self._toggle_auto_poll).grid(
-            row=2, column=0, padx=8, pady=8, sticky="w"
-        )
-
         ttk.Button(window, text="Close", command=self._close_settings).grid(row=3, column=0, padx=12, pady=(6, 12), sticky="e")
 
     def _close_settings(self) -> None:
@@ -433,8 +590,7 @@ class ElementCheckerApp(tk.Tk):
         self._append_log("Port connected")
 
     def _disconnect(self) -> None:
-        self.auto_poll_var.set(False)
-        self._cancel_auto_poll()
+        self._stop_auto_poll()
         if self.serial_port:
             try:
                 self.serial_port.close()
@@ -467,6 +623,8 @@ class ElementCheckerApp(tk.Tk):
         if not 1 <= channel <= TELEMETRY_CHANNELS:
             messagebox.showerror("Telemetry error", f"Sensor channel must be 1..{TELEMETRY_CHANNELS}")
             return
+        if not self.sensor_settings[device_index][channel - 1].used:
+            return
 
         try:
             settings = self._settings(device_index)
@@ -476,7 +634,7 @@ class ElementCheckerApp(tk.Tk):
             messagebox.showerror("Telemetry settings error", str(exc))
             return
 
-        self.temperature_vars[device_index][channel - 1].set(f"{channel}\nreading")
+        self._set_temperature_label(device_index, channel, "reading")
         self._send_request(
             request,
             9,
@@ -485,32 +643,44 @@ class ElementCheckerApp(tk.Tk):
             ),
         )
 
-    def _request_all_temperatures(self) -> None:
+    def _request_all_temperatures(self, auto: bool = False) -> bool:
         if not self._ensure_connected():
-            return
+            return False
+        if self.temperature_poll_running:
+            if not auto:
+                self.status_var.set("Temperature polling is already running")
+            return False
 
         try:
             settings_by_device = [self._settings(device_index) for device_index in range(DEVICE_COUNT)]
         except Exception as exc:
             messagebox.showerror("Telemetry settings error", str(exc))
-            return
+            return False
+
+        self.temperature_poll_running = True
 
         def worker() -> None:
-            for device_index, settings in enumerate(settings_by_device):
-                for channel in range(1, TELEMETRY_CHANNELS + 1):
-                    try:
-                        address = TELEMETRY_BASE_ADDRESS + (channel - 1) * TELEMETRY_REGISTERS_PER_CHANNEL
-                        request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
-                        self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
-                        response = self._transact(request, 9)
-                        self.ui_queue.put(("telemetry", f"{device_index}|{channel}|{settings.slave_addr}|{response.hex()}"))
-                        time.sleep(max(0.02, settings.scan_rate_ms / 1000 / 10))
-                    except Exception as exc:
-                        self.ui_queue.put(("temp", f"{device_index}|{channel}|error"))
-                        self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: Error: {exc}"))
+            try:
+                for device_index, settings in enumerate(settings_by_device):
+                    for channel in range(1, TELEMETRY_CHANNELS + 1):
+                        if not self.sensor_settings[device_index][channel - 1].used:
+                            continue
+                        try:
+                            address = TELEMETRY_BASE_ADDRESS + (channel - 1) * TELEMETRY_REGISTERS_PER_CHANNEL
+                            request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
+                            self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
+                            response = self._transact(request, 9)
+                            self.ui_queue.put(("telemetry", f"{device_index}|{channel}|{settings.slave_addr}|{response.hex()}"))
+                            time.sleep(max(0.02, settings.scan_rate_ms / 1000 / 10))
+                        except Exception as exc:
+                            self.ui_queue.put(("temp", f"{device_index}|{channel}|error"))
+                            self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: Error: {exc}"))
+            finally:
+                self.ui_queue.put(("poll_done", "auto" if auto else "manual"))
 
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
+        return True
 
     def _send_request(self, request: bytes, expected_size: int, callback) -> None:
         if not self._ensure_connected():
@@ -563,17 +733,17 @@ class ElementCheckerApp(tk.Tk):
         try:
             result = validate_read_response(response, slave_addr, 0x03, 4)
             if not result.valid:
-                self.temperature_vars[device_index][channel - 1].set(f"{channel}\ninvalid")
+                self._set_temperature_label(device_index, channel, "invalid")
                 self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {result.message}")
                 self._append_log(f"Device {device_index + 1}, sensor {channel}: invalid response - {result.message}")
                 return
 
             temperature = decode_tm5104_temperature(result.data)
-            self.temperature_vars[device_index][channel - 1].set(f"{channel}\n{temperature:.1f} C")
+            self._set_temperature_label(device_index, channel, f"{temperature:.1f} C")
             self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {temperature:.2f} C")
             self._append_log(f"Device {device_index + 1}, sensor {channel}: valid, temperature = {temperature:.3f} C")
         except Exception as exc:
-            self.temperature_vars[device_index][channel - 1].set(f"{channel}\nerror")
+            self._set_temperature_label(device_index, channel, "error")
             self.status_var.set(f"Device {device_index + 1}, sensor {channel}: decode error")
             self._append_log(f"Device {device_index + 1}, sensor {channel}: decode error - {exc}")
 
@@ -604,25 +774,65 @@ class ElementCheckerApp(tk.Tk):
         else:
             self.start_address_var.set(str(value))
 
-    def _toggle_auto_poll(self) -> None:
-        if self.auto_poll_var.get():
-            self._schedule_auto_poll(0)
-        else:
-            self._cancel_auto_poll()
+    def _auto_poll_interval_ms(self) -> int:
+        raw_value = self.auto_poll_interval_var.get().strip().replace(",", ".")
+        if not raw_value:
+            raise ValueError("Auto poll interval is empty")
+        try:
+            value = float(raw_value)
+        except ValueError as exc:
+            raise ValueError("Auto poll interval must be a number") from exc
+        if self.auto_poll_unit_var.get() == "s":
+            value *= 1000
+        delay = int(value)
+        if not 100 <= delay <= 100000:
+            raise ValueError("Auto poll interval must be from 100 ms to 100 s")
+        return delay
+
+    def _start_auto_poll(self) -> None:
+        if not self._ensure_connected():
+            return
+        try:
+            self._auto_poll_interval_ms()
+        except Exception as exc:
+            messagebox.showerror("Auto poll settings error", str(exc))
+            return
+
+        self.auto_poll_var.set(True)
+        self.auto_start_button.state(["disabled"])
+        self.auto_stop_button.state(["!disabled"])
+        self.auto_poll_status_var.set("Auto poll running")
+        self._schedule_auto_poll(0)
+
+    def _stop_auto_poll(self) -> None:
+        self.auto_poll_var.set(False)
+        self._cancel_auto_poll()
+        if hasattr(self, "auto_start_button"):
+            self.auto_start_button.state(["!disabled"])
+        if hasattr(self, "auto_stop_button"):
+            self.auto_stop_button.state(["disabled"])
+        self.auto_poll_status_var.set("Auto poll stopped")
 
     def _schedule_auto_poll(self, delay_ms: int | None = None) -> None:
         self._cancel_auto_poll()
         try:
-            delay = max(50, int(self.scan_rate_var.get())) if delay_ms is None else delay_ms
-        except ValueError:
-            delay = 1000
+            delay = self._auto_poll_interval_ms() if delay_ms is None else delay_ms
+        except Exception as exc:
+            self._stop_auto_poll()
+            messagebox.showerror("Auto poll settings error", str(exc))
+            return
         self.auto_poll_after_id = self.after(delay, self._auto_poll_once)
 
     def _auto_poll_once(self) -> None:
         self.auto_poll_after_id = None
         if self.auto_poll_var.get():
-            self._send_manual_request()
-            self._schedule_auto_poll()
+            if not self.serial_port or not self.serial_port.is_open:
+                self._stop_auto_poll()
+                return
+            self.auto_poll_status_var.set("Polling...")
+            started = self._request_all_temperatures(auto=True)
+            if not started:
+                self._schedule_auto_poll()
 
     def _cancel_auto_poll(self) -> None:
         if self.auto_poll_after_id is not None:
@@ -646,7 +856,7 @@ class ElementCheckerApp(tk.Tk):
             elif kind == "temp":
                 device_text, channel_text, label = value.split("|", 2)
                 channel = int(channel_text)
-                self.temperature_vars[int(device_text)][channel - 1].set(f"{channel}\n{label}")
+                self._set_temperature_label(int(device_text), channel, label)
             elif kind == "telemetry":
                 device_text, channel_text, slave_text, response_hex = value.split("|", 3)
                 self._handle_temperature_response(
@@ -655,6 +865,13 @@ class ElementCheckerApp(tk.Tk):
                     bytes.fromhex(response_hex),
                     int(slave_text),
                 )
+            elif kind == "poll_done":
+                self.temperature_poll_running = False
+                if value == "auto" and self.auto_poll_var.get():
+                    self.auto_poll_status_var.set("Auto poll running")
+                    self._schedule_auto_poll()
+                elif value == "auto":
+                    self.auto_poll_status_var.set("Auto poll stopped")
             elif kind == "callback":
                 callback_id_text, response_hex = value.split("|", 1)
                 callback = self._pending_callbacks.pop(int(callback_id_text), None)

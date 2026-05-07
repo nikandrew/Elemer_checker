@@ -4,6 +4,10 @@ Python/Tkinter utility for Modbus RTU requests and TM5104 telemetry.
 
 The main window contains connection controls, status, and three compact TM5104 telemetry panels. Port settings, shared Modbus settings, and the three device slave addresses are configured from the Settings window.
 
+On startup the app reads `element_checker_settings.xlsx` from the repository folder. Sensor names are taken from `Name`; sensors where `Used` is not `1` are disabled.
+
+Automatic temperature polling is configured in the main window. The polling interval can be set from `100 ms` to `100 s`.
+
 ## Run
 
 ```powershell
