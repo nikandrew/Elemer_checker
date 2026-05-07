@@ -1,24 +1,20 @@
 # Element TM5104 Modbus Checker
 
-Small Python/Tkinter utility for sending Modbus RTU requests to Element TM5104.
-
-## Install
-
-```powershell
-cd c:\soft\TERMU_sxTelemetry\Element_checker
-python -m pip install -r requirements.txt
-```
+Python/Tkinter utility for Modbus RTU requests and TM5104 telemetry.
 
 ## Run
 
 ```powershell
+cd c:\soft\TERMU_sxTelemetry\Element_checker
+python -m pip install -r requirements.txt
 python element_checker.py
 ```
 
-Defaults:
+Telemetry buttons read 16 sensor channels from holding registers:
 
-- COM port: `COM22`
-- Baudrate: `115200`
-- Stop bits: `2`
-- Slave addr: `2`
-- Scan Rate: `1000 ms`
+- Sensor 1: `0500`, quantity `2`
+- Sensor 2: `0502`, quantity `2`
+- ...
+- Sensor 16: `051E`, quantity `2`
+
+Each sensor value is decoded as big-endian IEEE 754 `float`.

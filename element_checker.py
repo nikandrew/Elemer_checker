@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import queue
+import struct
 import threading
 import time
 import tkinter as tk
@@ -25,8 +26,21 @@ FUNCTIONS = {
     "06 - Write Single Register": 0x06,
 }
 
+EXCEPTION_CODES = {
+    0x01: "Illegal Function",
+    0x02: "Illegal Data Address",
+    0x03: "Illegal Data Value",
+    0x04: "Slave Device Failure",
+    0x06: "Slave Device Busy",
+    0x20: "Invalid data length",
+    0x21: "Read-only access",
+}
+
 READ_FUNCTIONS = {0x01, 0x02, 0x03, 0x04}
 WRITE_SINGLE_FUNCTIONS = {0x05, 0x06}
+TELEMETRY_BASE_ADDRESS = 0x0500
+TELEMETRY_CHANNELS = 16
+TELEMETRY_REGISTERS_PER_CHANNEL = 2
 
 
 @dataclass
@@ -36,6 +50,13 @@ class PortSettings:
     stopbits: float
     slave_addr: int
     scan_rate_ms: int
+
+
+@dataclass
+class ModbusResult:
+    valid: bool
+    message: str
+    data: bytes = b""
 
 
 def modbus_crc(data: bytes) -> bytes:
@@ -48,6 +69,10 @@ def modbus_crc(data: bytes) -> bytes:
             else:
                 crc >>= 1
     return crc.to_bytes(2, byteorder="little")
+
+
+def check_crc(frame: bytes) -> bool:
+    return len(frame) >= 4 and modbus_crc(frame[:-2]) == frame[-2:]
 
 
 def build_request(slave_addr: int, function_code: int, start_address: int, quantity: int) -> bytes:
@@ -81,6 +106,33 @@ def expected_response_size(function_code: int, quantity: int) -> int:
     return 0
 
 
+def validate_read_response(response: bytes, slave_addr: int, function_code: int, expected_data_len: int) -> ModbusResult:
+    if not response:
+        return ModbusResult(False, "timeout/no data")
+    if len(response) < 5:
+        return ModbusResult(False, f"too short: {len(response)} byte(s)")
+    if not check_crc(response):
+        return ModbusResult(False, "CRC mismatch")
+    if response[0] != slave_addr:
+        return ModbusResult(False, f"wrong slave addr: {response[0]}")
+
+    if response[1] == function_code + 0x80:
+        code = response[2]
+        description = EXCEPTION_CODES.get(code, "Unknown exception")
+        return ModbusResult(False, f"Modbus exception {code:02X}: {description}")
+
+    if response[1] != function_code:
+        return ModbusResult(False, f"wrong function: {response[1]:02X}")
+    if response[2] != expected_data_len:
+        return ModbusResult(False, f"wrong byte count: {response[2]}, expected {expected_data_len}")
+
+    expected_frame_len = 3 + expected_data_len + 2
+    if len(response) != expected_frame_len:
+        return ModbusResult(False, f"wrong frame length: {len(response)}, expected {expected_frame_len}")
+
+    return ModbusResult(True, "valid", response[3 : 3 + expected_data_len])
+
+
 def parse_int(value: str, base_name: str) -> int:
     value = value.strip()
     if not value:
@@ -94,17 +146,27 @@ def format_hex(data: bytes) -> str:
     return " ".join(f"{byte:02X}" for byte in data)
 
 
+def decode_tm5104_temperature(data: bytes) -> float:
+    if len(data) != 4:
+        raise ValueError(f"Temperature payload must contain 4 bytes, got {len(data)}")
+    value = struct.unpack(">f", data)[0]
+    if not math.isfinite(value):
+        raise ValueError("Temperature is not finite")
+    return value
+
+
 class ElementCheckerApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Element TM5104 Modbus Checker")
-        self.geometry("760x560")
-        self.minsize(720, 500)
+        self.geometry("900x680")
+        self.minsize(820, 600)
 
         self.serial_port = None
         self.worker_lock = threading.Lock()
         self.ui_queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self.auto_poll_after_id = None
+        self.temperature_vars: list[tk.StringVar] = []
 
         self.port_var = tk.StringVar(value="COM22")
         self.baud_var = tk.StringVar(value="115200")
@@ -112,8 +174,8 @@ class ElementCheckerApp(tk.Tk):
         self.slave_var = tk.StringVar(value="2")
         self.scan_rate_var = tk.StringVar(value="1000")
         self.function_var = tk.StringVar(value="03 - Read Holding Registers")
-        self.start_address_var = tk.StringVar(value="1")
-        self.address_base_var = tk.StringVar(value="Dec")
+        self.start_address_var = tk.StringVar(value="0500")
+        self.address_base_var = tk.StringVar(value="Hex")
         self.quantity_var = tk.StringVar(value="2")
         self.expected_var = tk.StringVar(value="")
         self.auto_poll_var = tk.BooleanVar(value=False)
@@ -152,7 +214,7 @@ class ElementCheckerApp(tk.Tk):
         self.connect_button = ttk.Button(port_frame, text="Connect port", command=self._toggle_port)
         self.connect_button.grid(row=0, column=6, columnspan=2, padx=8, pady=8, sticky="ew")
 
-        modbus_frame = ttk.LabelFrame(self, text="Modbus request")
+        modbus_frame = ttk.LabelFrame(self, text="Manual Modbus request")
         modbus_frame.grid(row=1, column=0, padx=12, pady=6, sticky="ew")
         for column in range(8):
             modbus_frame.columnconfigure(column, weight=1)
@@ -173,8 +235,9 @@ class ElementCheckerApp(tk.Tk):
         function_combo.bind("<<ComboboxSelected>>", lambda _event: self._refresh_expected())
 
         ttk.Label(modbus_frame, text="Start Address").grid(row=1, column=0, padx=8, pady=8, sticky="w")
-        address_spin = ttk.Spinbox(modbus_frame, from_=0, to=65535, textvariable=self.start_address_var, width=10)
-        address_spin.grid(row=1, column=1, padx=8, pady=8, sticky="ew")
+        ttk.Spinbox(modbus_frame, from_=0, to=65535, textvariable=self.start_address_var, width=10).grid(
+            row=1, column=1, padx=8, pady=8, sticky="ew"
+        )
 
         address_base = ttk.Combobox(
             modbus_frame,
@@ -201,26 +264,56 @@ class ElementCheckerApp(tk.Tk):
             row=1, column=7, padx=8, pady=8, sticky="w"
         )
 
-        action_frame = ttk.Frame(self)
-        action_frame.grid(row=3, column=0, padx=12, pady=(6, 12), sticky="ew")
-        action_frame.columnconfigure(0, weight=1)
+        telemetry_frame = ttk.LabelFrame(self, text="TM5104 telemetry")
+        telemetry_frame.grid(row=2, column=0, padx=12, pady=6, sticky="ew")
+        for column in range(8):
+            telemetry_frame.columnconfigure(column, weight=1)
 
-        self.request_button = ttk.Button(action_frame, text="Send request", command=self._send_request)
-        self.request_button.grid(row=0, column=0, sticky="ew")
+        for index in range(TELEMETRY_CHANNELS):
+            channel = index + 1
+            row = index // 4
+            column = (index % 4) * 2
+            value_var = tk.StringVar(value="--")
+            self.temperature_vars.append(value_var)
 
-        response_frame = ttk.LabelFrame(self, text="Response")
-        response_frame.grid(row=2, column=0, padx=12, pady=6, sticky="nsew")
+            button = ttk.Button(
+                telemetry_frame,
+                text=f"Sensor {channel}",
+                command=lambda selected=channel: self._request_temperature(selected),
+            )
+            button.grid(row=row, column=column, padx=(8, 4), pady=6, sticky="ew")
+            ttk.Label(telemetry_frame, textvariable=value_var, width=14, anchor="w").grid(
+                row=row, column=column + 1, padx=(4, 8), pady=6, sticky="ew"
+            )
+
+        content = ttk.PanedWindow(self, orient="vertical")
+        content.grid(row=3, column=0, padx=12, pady=6, sticky="nsew")
+        self.rowconfigure(3, weight=1)
+
+        response_frame = ttk.LabelFrame(content, text="Response")
         response_frame.columnconfigure(0, weight=1)
         response_frame.rowconfigure(0, weight=1)
+        content.add(response_frame, weight=1)
 
-        self.response_text = tk.Text(response_frame, wrap="word", height=14)
+        self.response_text = tk.Text(response_frame, wrap="word", height=12)
         self.response_text.grid(row=0, column=0, sticky="nsew")
         response_scroll = ttk.Scrollbar(response_frame, orient="vertical", command=self.response_text.yview)
         response_scroll.grid(row=0, column=1, sticky="ns")
         self.response_text.configure(yscrollcommand=response_scroll.set)
 
+        action_frame = ttk.Frame(self)
+        action_frame.grid(row=4, column=0, padx=12, pady=(6, 8), sticky="ew")
+        action_frame.columnconfigure(0, weight=1)
+        action_frame.columnconfigure(1, weight=1)
+
+        self.request_button = ttk.Button(action_frame, text="Send manual request", command=self._send_manual_request)
+        self.request_button.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        ttk.Button(action_frame, text="Request all sensors", command=self._request_all_temperatures).grid(
+            row=0, column=1, padx=(6, 0), sticky="ew"
+        )
+
         self.status_var = tk.StringVar(value="Port disconnected")
-        ttk.Label(self, textvariable=self.status_var, anchor="w").grid(row=4, column=0, padx=12, pady=(0, 10), sticky="ew")
+        ttk.Label(self, textvariable=self.status_var, anchor="w").grid(row=5, column=0, padx=12, pady=(0, 10), sticky="ew")
 
     def _available_ports(self) -> tuple[str, ...]:
         if list_ports is None:
@@ -247,7 +340,7 @@ class ElementCheckerApp(tk.Tk):
 
     def _connect(self) -> None:
         if serial is None:
-            messagebox.showerror("pyserial is not installed", "Install dependency first:\npython -m pip install -r requirements.txt")
+            messagebox.showerror("pyserial is not installed", "Install dependency first:\npython -m pip install pyserial")
             return
 
         try:
@@ -282,11 +375,7 @@ class ElementCheckerApp(tk.Tk):
         self.status_var.set("Port disconnected")
         self._append_log("Port disconnected")
 
-    def _send_request(self) -> None:
-        if not self.serial_port or not self.serial_port.is_open:
-            messagebox.showwarning("Port is not connected", "Connect the COM port first.")
-            return
-
+    def _send_manual_request(self) -> None:
         try:
             function_code = FUNCTIONS[self.function_var.get()]
             settings = self._settings()
@@ -298,33 +387,122 @@ class ElementCheckerApp(tk.Tk):
             messagebox.showerror("Request settings error", str(exc))
             return
 
-        thread = threading.Thread(target=self._request_worker, args=(request, expected_size), daemon=True)
-        thread.start()
+        self._send_request(request, expected_size, self._handle_manual_response)
 
-    def _request_worker(self, request: bytes, expected_size: int) -> None:
-        if not self.worker_lock.acquire(blocking=False):
-            self.ui_queue.put(("log", "Request is already running"))
+    def _request_temperature(self, channel: int) -> None:
+        if not 1 <= channel <= TELEMETRY_CHANNELS:
+            messagebox.showerror("Telemetry error", f"Sensor channel must be 1..{TELEMETRY_CHANNELS}")
             return
 
+        try:
+            settings = self._settings()
+            address = TELEMETRY_BASE_ADDRESS + (channel - 1) * TELEMETRY_REGISTERS_PER_CHANNEL
+            request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
+        except Exception as exc:
+            messagebox.showerror("Telemetry settings error", str(exc))
+            return
+
+        self.temperature_vars[channel - 1].set("reading...")
+        self._send_request(request, 9, lambda response, selected=channel: self._handle_temperature_response(selected, response))
+
+    def _request_all_temperatures(self) -> None:
+        if not self._ensure_connected():
+            return
+
+        try:
+            settings = self._settings()
+        except Exception as exc:
+            messagebox.showerror("Telemetry settings error", str(exc))
+            return
+
+        def worker() -> None:
+            for channel in range(1, TELEMETRY_CHANNELS + 1):
+                try:
+                    address = TELEMETRY_BASE_ADDRESS + (channel - 1) * TELEMETRY_REGISTERS_PER_CHANNEL
+                    request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
+                    self.ui_queue.put(("temp", f"{channel}|reading..."))
+                    response = self._transact(request, 9)
+                    self.ui_queue.put(("telemetry", f"{channel}|{response.hex()}"))
+                    time.sleep(max(0.02, settings.scan_rate_ms / 1000 / 10))
+                except Exception as exc:
+                    self.ui_queue.put(("temp", f"{channel}|error"))
+                    self.ui_queue.put(("log", f"Sensor {channel}: Error: {exc}"))
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+    def _send_request(self, request: bytes, expected_size: int, callback) -> None:
+        if not self._ensure_connected():
+            return
+        if not hasattr(self, "_pending_callbacks"):
+            self._pending_callbacks = {}
+        self._pending_callbacks[id(callback)] = callback
+
+        def worker() -> None:
+            try:
+                response = self._transact(request, expected_size)
+                self.ui_queue.put(("callback", f"{id(callback)}|{response.hex()}"))
+            except Exception as exc:
+                self._pending_callbacks.pop(id(callback), None)
+                self.ui_queue.put(("log", f"Error: {exc}"))
+                self.ui_queue.put(("status", "Request error"))
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+    def _transact(self, request: bytes, expected_size: int) -> bytes:
+        if not self.worker_lock.acquire(blocking=False):
+            raise RuntimeError("Request is already running")
         try:
             assert self.serial_port is not None
             self.serial_port.reset_input_buffer()
             self.serial_port.write(request)
             self.serial_port.flush()
             response = self.serial_port.read(expected_size or 256)
-
             self.ui_queue.put(("log", f"TX: {format_hex(request)}"))
-            if response:
-                self.ui_queue.put(("log", f"RX: {format_hex(response)}"))
-                self.ui_queue.put(("status", f"Received {len(response)} byte(s)"))
-            else:
-                self.ui_queue.put(("log", "RX: <timeout/no data>"))
-                self.ui_queue.put(("status", "No response"))
-        except Exception as exc:
-            self.ui_queue.put(("log", f"Error: {exc}"))
-            self.ui_queue.put(("status", "Request error"))
+            self.ui_queue.put(("log", f"RX: {format_hex(response) if response else '<timeout/no data>'}"))
+            return response
         finally:
             self.worker_lock.release()
+
+    def _handle_manual_response(self, response: bytes) -> None:
+        try:
+            settings = self._settings()
+            function_code = FUNCTIONS[self.function_var.get()]
+            quantity = int(self.quantity_var.get())
+            expected_data_len = math.ceil(quantity / 8) if function_code in {0x01, 0x02} else quantity * 2
+            result = validate_read_response(response, settings.slave_addr, function_code, expected_data_len)
+        except Exception as exc:
+            self.status_var.set(f"Validation error: {exc}")
+            return
+
+        self.status_var.set("Manual response valid" if result.valid else f"Manual response invalid: {result.message}")
+        self._append_log(f"Check: {result.message}")
+
+    def _handle_temperature_response(self, channel: int, response: bytes) -> None:
+        try:
+            settings = self._settings()
+            result = validate_read_response(response, settings.slave_addr, 0x03, 4)
+            if not result.valid:
+                self.temperature_vars[channel - 1].set("invalid")
+                self.status_var.set(f"Sensor {channel}: {result.message}")
+                self._append_log(f"Sensor {channel}: invalid response - {result.message}")
+                return
+
+            temperature = decode_tm5104_temperature(result.data)
+            self.temperature_vars[channel - 1].set(f"{temperature:.2f} C")
+            self.status_var.set(f"Sensor {channel}: {temperature:.2f} C")
+            self._append_log(f"Sensor {channel}: valid, temperature = {temperature:.3f} C")
+        except Exception as exc:
+            self.temperature_vars[channel - 1].set("error")
+            self.status_var.set(f"Sensor {channel}: decode error")
+            self._append_log(f"Sensor {channel}: decode error - {exc}")
+
+    def _ensure_connected(self) -> bool:
+        if not self.serial_port or not self.serial_port.is_open:
+            messagebox.showwarning("Port is not connected", "Connect the COM port first.")
+            return False
+        return True
 
     def _refresh_expected(self) -> None:
         try:
@@ -364,7 +542,7 @@ class ElementCheckerApp(tk.Tk):
     def _auto_poll_once(self) -> None:
         self.auto_poll_after_id = None
         if self.auto_poll_var.get():
-            self._send_request()
+            self._send_manual_request()
             self._schedule_auto_poll()
 
     def _cancel_auto_poll(self) -> None:
@@ -383,8 +561,20 @@ class ElementCheckerApp(tk.Tk):
                 kind, value = self.ui_queue.get_nowait()
             except queue.Empty:
                 break
+
             if kind == "status":
                 self.status_var.set(value)
+            elif kind == "temp":
+                channel_text, label = value.split("|", 1)
+                self.temperature_vars[int(channel_text) - 1].set(label)
+            elif kind == "telemetry":
+                channel_text, response_hex = value.split("|", 1)
+                self._handle_temperature_response(int(channel_text), bytes.fromhex(response_hex))
+            elif kind == "callback":
+                callback_id_text, response_hex = value.split("|", 1)
+                callback = self._pending_callbacks.pop(int(callback_id_text), None)
+                if callback is not None:
+                    callback(bytes.fromhex(response_hex))
             else:
                 self._append_log(value)
         self.after(100, self._drain_ui_queue)
