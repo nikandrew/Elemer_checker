@@ -41,6 +41,7 @@ WRITE_SINGLE_FUNCTIONS = {0x05, 0x06}
 TELEMETRY_BASE_ADDRESS = 0x0500
 TELEMETRY_CHANNELS = 16
 TELEMETRY_REGISTERS_PER_CHANNEL = 2
+DEVICE_COUNT = 3
 
 
 @dataclass
@@ -159,19 +160,21 @@ class ElementCheckerApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Element TM5104 Modbus Checker")
-        self.geometry("900x680")
-        self.minsize(820, 600)
+        self.geometry("980x760")
+        self.minsize(900, 680)
 
         self.serial_port = None
         self.worker_lock = threading.Lock()
         self.ui_queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self.auto_poll_after_id = None
-        self.temperature_vars: list[tk.StringVar] = []
+        self.temperature_vars: list[list[tk.StringVar]] = []
+        self.settings_window: tk.Toplevel | None = None
 
         self.port_var = tk.StringVar(value="COM22")
         self.baud_var = tk.StringVar(value="115200")
         self.stopbits_var = tk.StringVar(value="2")
-        self.slave_var = tk.StringVar(value="2")
+        self.slave_vars = [tk.StringVar(value=str(index + 2)) for index in range(DEVICE_COUNT)]
+        self.selected_device_var = tk.StringVar(value="1")
         self.scan_rate_var = tk.StringVar(value="1000")
         self.function_var = tk.StringVar(value="03 - Read Holding Registers")
         self.start_address_var = tk.StringVar(value="0500")
@@ -179,6 +182,7 @@ class ElementCheckerApp(tk.Tk):
         self.quantity_var = tk.StringVar(value="2")
         self.expected_var = tk.StringVar(value="")
         self.auto_poll_var = tk.BooleanVar(value=False)
+        self.quantity_var.trace_add("write", lambda *_args: self._refresh_expected())
 
         self._build_ui()
         self._refresh_expected()
@@ -187,12 +191,96 @@ class ElementCheckerApp(tk.Tk):
 
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(2, weight=1)
+        self.rowconfigure(3, weight=1)
 
-        port_frame = ttk.LabelFrame(self, text="Port settings")
+        top_frame = ttk.Frame(self)
+        top_frame.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="ew")
+        top_frame.columnconfigure(2, weight=1)
+
+        self.connect_button = ttk.Button(top_frame, text="Connect port", command=self._toggle_port)
+        self.connect_button.grid(row=0, column=0, padx=(0, 8), sticky="w")
+        ttk.Button(top_frame, text="Settings", command=self._open_settings).grid(row=0, column=1, padx=(0, 12), sticky="w")
+
+        self.status_var = tk.StringVar(value="Port disconnected")
+        ttk.Label(top_frame, textvariable=self.status_var, anchor="w").grid(row=0, column=2, sticky="ew")
+
+        telemetry_frame = ttk.LabelFrame(self, text="TM5104 telemetry")
+        telemetry_frame.grid(row=1, column=0, padx=12, pady=6, sticky="ew")
+        for column in range(DEVICE_COUNT):
+            telemetry_frame.columnconfigure(column, weight=1)
+
+        for device_index in range(DEVICE_COUNT):
+            device_frame = ttk.LabelFrame(telemetry_frame, text=f"Device {device_index + 1}")
+            device_frame.grid(row=0, column=device_index, padx=6, pady=6, sticky="nsew")
+            for column in range(4):
+                device_frame.columnconfigure(column, weight=1)
+
+            ttk.Label(device_frame, text="Slave address").grid(row=0, column=0, columnspan=2, padx=4, pady=(4, 2), sticky="e")
+            ttk.Label(
+                device_frame,
+                textvariable=self.slave_vars[device_index],
+                anchor="w",
+                font=("", 10, "bold"),
+            ).grid(row=0, column=2, columnspan=2, padx=4, pady=(4, 2), sticky="w")
+
+            device_values: list[tk.StringVar] = []
+            for index in range(TELEMETRY_CHANNELS):
+                channel = index + 1
+                row = index // 4 + 1
+                column = index % 4
+                value_var = tk.StringVar(value=f"{channel}\n--")
+                device_values.append(value_var)
+
+                button = ttk.Button(
+                    device_frame,
+                    textvariable=value_var,
+                    width=8,
+                    command=lambda dev=device_index, selected=channel: self._request_temperature(dev, selected),
+                )
+                button.grid(row=row, column=column, padx=3, pady=3, sticky="nsew")
+
+            self.temperature_vars.append(device_values)
+
+        action_frame = ttk.Frame(self)
+        action_frame.grid(row=2, column=0, padx=12, pady=6, sticky="ew")
+        action_frame.columnconfigure(0, weight=1)
+        action_frame.columnconfigure(1, weight=1)
+
+        self.request_button = ttk.Button(action_frame, text="Send manual request", command=self._send_manual_request)
+        self.request_button.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        ttk.Button(action_frame, text="Request all temperatures", command=self._request_all_temperatures).grid(
+            row=0, column=1, padx=(6, 0), sticky="ew"
+        )
+
+        content = ttk.PanedWindow(self, orient="vertical")
+        content.grid(row=3, column=0, padx=12, pady=6, sticky="nsew")
+
+        response_frame = ttk.LabelFrame(content, text="Response")
+        response_frame.columnconfigure(0, weight=1)
+        response_frame.rowconfigure(0, weight=1)
+        content.add(response_frame, weight=1)
+
+        self.response_text = tk.Text(response_frame, wrap="word", height=12)
+        self.response_text.grid(row=0, column=0, sticky="nsew")
+        response_scroll = ttk.Scrollbar(response_frame, orient="vertical", command=self.response_text.yview)
+        response_scroll.grid(row=0, column=1, sticky="ns")
+        self.response_text.configure(yscrollcommand=response_scroll.set)
+
+    def _open_settings(self) -> None:
+        if self.settings_window is not None and self.settings_window.winfo_exists():
+            self.settings_window.lift()
+            self.settings_window.focus_set()
+            return
+
+        window = tk.Toplevel(self)
+        window.title("Settings")
+        window.transient(self)
+        window.resizable(False, False)
+        window.protocol("WM_DELETE_WINDOW", self._close_settings)
+        self.settings_window = window
+
+        port_frame = ttk.LabelFrame(window, text="Port settings")
         port_frame.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="ew")
-        for column in range(8):
-            port_frame.columnconfigure(column, weight=1)
 
         ttk.Label(port_frame, text="COM Port").grid(row=0, column=0, padx=8, pady=8, sticky="w")
         self.port_combo = ttk.Combobox(port_frame, textvariable=self.port_var, values=self._available_ports(), width=12)
@@ -206,32 +294,41 @@ class ElementCheckerApp(tk.Tk):
             width=10,
         ).grid(row=0, column=3, padx=8, pady=8, sticky="ew")
 
-        ttk.Label(port_frame, text="Stop bits").grid(row=0, column=4, padx=8, pady=8, sticky="w")
+        ttk.Label(port_frame, text="Stop bits").grid(row=1, column=0, padx=8, pady=8, sticky="w")
         ttk.Combobox(port_frame, textvariable=self.stopbits_var, values=("1", "1.5", "2"), width=8).grid(
-            row=0, column=5, padx=8, pady=8, sticky="ew"
+            row=1, column=1, padx=8, pady=8, sticky="ew"
         )
 
-        self.connect_button = ttk.Button(port_frame, text="Connect port", command=self._toggle_port)
-        self.connect_button.grid(row=0, column=6, columnspan=2, padx=8, pady=8, sticky="ew")
-
-        modbus_frame = ttk.LabelFrame(self, text="Manual Modbus request")
-        modbus_frame.grid(row=1, column=0, padx=12, pady=6, sticky="ew")
-        for column in range(8):
-            modbus_frame.columnconfigure(column, weight=1)
-
-        ttk.Label(modbus_frame, text="Slave addr").grid(row=0, column=0, padx=8, pady=8, sticky="w")
-        ttk.Spinbox(modbus_frame, from_=0, to=247, textvariable=self.slave_var, width=8).grid(
-            row=0, column=1, padx=8, pady=8, sticky="ew"
+        ttk.Label(port_frame, text="Scan Rate (ms)").grid(row=1, column=2, padx=8, pady=8, sticky="w")
+        ttk.Spinbox(port_frame, from_=50, to=60000, increment=50, textvariable=self.scan_rate_var, width=10).grid(
+            row=1, column=3, padx=8, pady=8, sticky="ew"
         )
 
-        ttk.Label(modbus_frame, text="Scan Rate (ms)").grid(row=0, column=2, padx=8, pady=8, sticky="w")
-        ttk.Spinbox(modbus_frame, from_=50, to=60000, increment=50, textvariable=self.scan_rate_var, width=10).grid(
-            row=0, column=3, padx=8, pady=8, sticky="ew"
-        )
+        device_frame = ttk.LabelFrame(window, text="Device slave addresses")
+        device_frame.grid(row=1, column=0, padx=12, pady=6, sticky="ew")
+        for device_index, slave_var in enumerate(self.slave_vars):
+            ttk.Label(device_frame, text=f"Device {device_index + 1}").grid(
+                row=0, column=device_index * 2, padx=8, pady=8, sticky="w"
+            )
+            ttk.Spinbox(device_frame, from_=0, to=247, textvariable=slave_var, width=8).grid(
+                row=0, column=device_index * 2 + 1, padx=8, pady=8, sticky="ew"
+            )
 
-        ttk.Label(modbus_frame, text="Function").grid(row=0, column=4, padx=8, pady=8, sticky="w")
+        modbus_frame = ttk.LabelFrame(window, text="Manual Modbus request")
+        modbus_frame.grid(row=2, column=0, padx=12, pady=6, sticky="ew")
+
+        ttk.Label(modbus_frame, text="Device").grid(row=0, column=0, padx=8, pady=8, sticky="w")
+        ttk.Combobox(
+            modbus_frame,
+            textvariable=self.selected_device_var,
+            values=tuple(str(index + 1) for index in range(DEVICE_COUNT)),
+            state="readonly",
+            width=8,
+        ).grid(row=0, column=1, padx=8, pady=8, sticky="ew")
+
+        ttk.Label(modbus_frame, text="Function").grid(row=0, column=2, padx=8, pady=8, sticky="w")
         function_combo = ttk.Combobox(modbus_frame, textvariable=self.function_var, values=tuple(FUNCTIONS), state="readonly")
-        function_combo.grid(row=0, column=5, columnspan=3, padx=8, pady=8, sticky="ew")
+        function_combo.grid(row=0, column=3, columnspan=3, padx=8, pady=8, sticky="ew")
         function_combo.bind("<<ComboboxSelected>>", lambda _event: self._refresh_expected())
 
         ttk.Label(modbus_frame, text="Start Address").grid(row=1, column=0, padx=8, pady=8, sticky="w")
@@ -253,67 +350,23 @@ class ElementCheckerApp(tk.Tk):
         quantity_spin = ttk.Spinbox(modbus_frame, from_=1, to=65535, textvariable=self.quantity_var, width=10)
         quantity_spin.grid(row=1, column=4, padx=8, pady=8, sticky="ew")
         quantity_spin.configure(command=self._refresh_expected)
-        self.quantity_var.trace_add("write", lambda *_args: self._refresh_expected())
 
-        ttk.Label(modbus_frame, text="Expected response bytes").grid(row=1, column=5, padx=8, pady=8, sticky="w")
+        ttk.Label(modbus_frame, text="Expected bytes").grid(row=1, column=5, padx=8, pady=8, sticky="w")
         ttk.Entry(modbus_frame, textvariable=self.expected_var, state="readonly", width=8).grid(
             row=1, column=6, padx=8, pady=8, sticky="ew"
         )
 
         ttk.Checkbutton(modbus_frame, text="Auto", variable=self.auto_poll_var, command=self._toggle_auto_poll).grid(
-            row=1, column=7, padx=8, pady=8, sticky="w"
+            row=2, column=0, padx=8, pady=8, sticky="w"
         )
 
-        telemetry_frame = ttk.LabelFrame(self, text="TM5104 telemetry")
-        telemetry_frame.grid(row=2, column=0, padx=12, pady=6, sticky="ew")
-        for column in range(8):
-            telemetry_frame.columnconfigure(column, weight=1)
+        ttk.Button(window, text="Close", command=self._close_settings).grid(row=3, column=0, padx=12, pady=(6, 12), sticky="e")
 
-        for index in range(TELEMETRY_CHANNELS):
-            channel = index + 1
-            row = index // 4
-            column = (index % 4) * 2
-            value_var = tk.StringVar(value="--")
-            self.temperature_vars.append(value_var)
+    def _close_settings(self) -> None:
+        if self.settings_window is not None:
+            self.settings_window.destroy()
+            self.settings_window = None
 
-            button = ttk.Button(
-                telemetry_frame,
-                text=f"Sensor {channel}",
-                command=lambda selected=channel: self._request_temperature(selected),
-            )
-            button.grid(row=row, column=column, padx=(8, 4), pady=6, sticky="ew")
-            ttk.Label(telemetry_frame, textvariable=value_var, width=14, anchor="w").grid(
-                row=row, column=column + 1, padx=(4, 8), pady=6, sticky="ew"
-            )
-
-        content = ttk.PanedWindow(self, orient="vertical")
-        content.grid(row=3, column=0, padx=12, pady=6, sticky="nsew")
-        self.rowconfigure(3, weight=1)
-
-        response_frame = ttk.LabelFrame(content, text="Response")
-        response_frame.columnconfigure(0, weight=1)
-        response_frame.rowconfigure(0, weight=1)
-        content.add(response_frame, weight=1)
-
-        self.response_text = tk.Text(response_frame, wrap="word", height=12)
-        self.response_text.grid(row=0, column=0, sticky="nsew")
-        response_scroll = ttk.Scrollbar(response_frame, orient="vertical", command=self.response_text.yview)
-        response_scroll.grid(row=0, column=1, sticky="ns")
-        self.response_text.configure(yscrollcommand=response_scroll.set)
-
-        action_frame = ttk.Frame(self)
-        action_frame.grid(row=4, column=0, padx=12, pady=(6, 8), sticky="ew")
-        action_frame.columnconfigure(0, weight=1)
-        action_frame.columnconfigure(1, weight=1)
-
-        self.request_button = ttk.Button(action_frame, text="Send manual request", command=self._send_manual_request)
-        self.request_button.grid(row=0, column=0, padx=(0, 6), sticky="ew")
-        ttk.Button(action_frame, text="Request all sensors", command=self._request_all_temperatures).grid(
-            row=0, column=1, padx=(6, 0), sticky="ew"
-        )
-
-        self.status_var = tk.StringVar(value="Port disconnected")
-        ttk.Label(self, textvariable=self.status_var, anchor="w").grid(row=5, column=0, padx=12, pady=(0, 10), sticky="ew")
 
     def _available_ports(self) -> tuple[str, ...]:
         if list_ports is None:
@@ -323,12 +376,28 @@ class ElementCheckerApp(tk.Tk):
             ports.insert(0, "COM22")
         return tuple(ports)
 
-    def _settings(self) -> PortSettings:
+    def _selected_device_index(self) -> int:
+        device_index = int(self.selected_device_var.get()) - 1
+        if not 0 <= device_index < DEVICE_COUNT:
+            raise ValueError(f"Device must be 1..{DEVICE_COUNT}")
+        return device_index
+
+    def _slave_addr(self, device_index: int) -> int:
+        if not 0 <= device_index < DEVICE_COUNT:
+            raise ValueError(f"Device must be 1..{DEVICE_COUNT}")
+        slave_addr = int(self.slave_vars[device_index].get())
+        if not 0 <= slave_addr <= 247:
+            raise ValueError("Slave address must be 0..247")
+        return slave_addr
+
+    def _settings(self, device_index: int | None = None) -> PortSettings:
+        if device_index is None:
+            device_index = self._selected_device_index()
         return PortSettings(
             port=self.port_var.get().strip() or "COM22",
             baudrate=int(self.baud_var.get()),
             stopbits=float(self.stopbits_var.get()),
-            slave_addr=int(self.slave_var.get()),
+            slave_addr=self._slave_addr(device_index),
             scan_rate_ms=max(50, int(self.scan_rate_var.get())),
         )
 
@@ -344,7 +413,7 @@ class ElementCheckerApp(tk.Tk):
             return
 
         try:
-            settings = self._settings()
+            settings = self._settings(0)
             self.serial_port = serial.Serial(
                 port=settings.port,
                 baudrate=settings.baudrate,
@@ -378,7 +447,8 @@ class ElementCheckerApp(tk.Tk):
     def _send_manual_request(self) -> None:
         try:
             function_code = FUNCTIONS[self.function_var.get()]
-            settings = self._settings()
+            device_index = self._selected_device_index()
+            settings = self._settings(device_index)
             start_address = parse_int(self.start_address_var.get(), self.address_base_var.get())
             quantity = int(self.quantity_var.get())
             request = build_request(settings.slave_addr, function_code, start_address, quantity)
@@ -387,46 +457,57 @@ class ElementCheckerApp(tk.Tk):
             messagebox.showerror("Request settings error", str(exc))
             return
 
-        self._send_request(request, expected_size, self._handle_manual_response)
+        self._send_request(
+            request,
+            expected_size,
+            lambda response, slave_addr=settings.slave_addr: self._handle_manual_response(response, slave_addr),
+        )
 
-    def _request_temperature(self, channel: int) -> None:
+    def _request_temperature(self, device_index: int, channel: int) -> None:
         if not 1 <= channel <= TELEMETRY_CHANNELS:
             messagebox.showerror("Telemetry error", f"Sensor channel must be 1..{TELEMETRY_CHANNELS}")
             return
 
         try:
-            settings = self._settings()
+            settings = self._settings(device_index)
             address = TELEMETRY_BASE_ADDRESS + (channel - 1) * TELEMETRY_REGISTERS_PER_CHANNEL
             request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
         except Exception as exc:
             messagebox.showerror("Telemetry settings error", str(exc))
             return
 
-        self.temperature_vars[channel - 1].set("reading...")
-        self._send_request(request, 9, lambda response, selected=channel: self._handle_temperature_response(selected, response))
+        self.temperature_vars[device_index][channel - 1].set(f"{channel}\nreading")
+        self._send_request(
+            request,
+            9,
+            lambda response, dev=device_index, selected=channel, slave_addr=settings.slave_addr: self._handle_temperature_response(
+                dev, selected, response, slave_addr
+            ),
+        )
 
     def _request_all_temperatures(self) -> None:
         if not self._ensure_connected():
             return
 
         try:
-            settings = self._settings()
+            settings_by_device = [self._settings(device_index) for device_index in range(DEVICE_COUNT)]
         except Exception as exc:
             messagebox.showerror("Telemetry settings error", str(exc))
             return
 
         def worker() -> None:
-            for channel in range(1, TELEMETRY_CHANNELS + 1):
-                try:
-                    address = TELEMETRY_BASE_ADDRESS + (channel - 1) * TELEMETRY_REGISTERS_PER_CHANNEL
-                    request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
-                    self.ui_queue.put(("temp", f"{channel}|reading..."))
-                    response = self._transact(request, 9)
-                    self.ui_queue.put(("telemetry", f"{channel}|{response.hex()}"))
-                    time.sleep(max(0.02, settings.scan_rate_ms / 1000 / 10))
-                except Exception as exc:
-                    self.ui_queue.put(("temp", f"{channel}|error"))
-                    self.ui_queue.put(("log", f"Sensor {channel}: Error: {exc}"))
+            for device_index, settings in enumerate(settings_by_device):
+                for channel in range(1, TELEMETRY_CHANNELS + 1):
+                    try:
+                        address = TELEMETRY_BASE_ADDRESS + (channel - 1) * TELEMETRY_REGISTERS_PER_CHANNEL
+                        request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
+                        self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
+                        response = self._transact(request, 9)
+                        self.ui_queue.put(("telemetry", f"{device_index}|{channel}|{settings.slave_addr}|{response.hex()}"))
+                        time.sleep(max(0.02, settings.scan_rate_ms / 1000 / 10))
+                    except Exception as exc:
+                        self.ui_queue.put(("temp", f"{device_index}|{channel}|error"))
+                        self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: Error: {exc}"))
 
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
@@ -465,13 +546,12 @@ class ElementCheckerApp(tk.Tk):
         finally:
             self.worker_lock.release()
 
-    def _handle_manual_response(self, response: bytes) -> None:
+    def _handle_manual_response(self, response: bytes, slave_addr: int) -> None:
         try:
-            settings = self._settings()
             function_code = FUNCTIONS[self.function_var.get()]
             quantity = int(self.quantity_var.get())
             expected_data_len = math.ceil(quantity / 8) if function_code in {0x01, 0x02} else quantity * 2
-            result = validate_read_response(response, settings.slave_addr, function_code, expected_data_len)
+            result = validate_read_response(response, slave_addr, function_code, expected_data_len)
         except Exception as exc:
             self.status_var.set(f"Validation error: {exc}")
             return
@@ -479,24 +559,23 @@ class ElementCheckerApp(tk.Tk):
         self.status_var.set("Manual response valid" if result.valid else f"Manual response invalid: {result.message}")
         self._append_log(f"Check: {result.message}")
 
-    def _handle_temperature_response(self, channel: int, response: bytes) -> None:
+    def _handle_temperature_response(self, device_index: int, channel: int, response: bytes, slave_addr: int) -> None:
         try:
-            settings = self._settings()
-            result = validate_read_response(response, settings.slave_addr, 0x03, 4)
+            result = validate_read_response(response, slave_addr, 0x03, 4)
             if not result.valid:
-                self.temperature_vars[channel - 1].set("invalid")
-                self.status_var.set(f"Sensor {channel}: {result.message}")
-                self._append_log(f"Sensor {channel}: invalid response - {result.message}")
+                self.temperature_vars[device_index][channel - 1].set(f"{channel}\ninvalid")
+                self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {result.message}")
+                self._append_log(f"Device {device_index + 1}, sensor {channel}: invalid response - {result.message}")
                 return
 
             temperature = decode_tm5104_temperature(result.data)
-            self.temperature_vars[channel - 1].set(f"{temperature:.2f} C")
-            self.status_var.set(f"Sensor {channel}: {temperature:.2f} C")
-            self._append_log(f"Sensor {channel}: valid, temperature = {temperature:.3f} C")
+            self.temperature_vars[device_index][channel - 1].set(f"{channel}\n{temperature:.1f} C")
+            self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {temperature:.2f} C")
+            self._append_log(f"Device {device_index + 1}, sensor {channel}: valid, temperature = {temperature:.3f} C")
         except Exception as exc:
-            self.temperature_vars[channel - 1].set("error")
-            self.status_var.set(f"Sensor {channel}: decode error")
-            self._append_log(f"Sensor {channel}: decode error - {exc}")
+            self.temperature_vars[device_index][channel - 1].set(f"{channel}\nerror")
+            self.status_var.set(f"Device {device_index + 1}, sensor {channel}: decode error")
+            self._append_log(f"Device {device_index + 1}, sensor {channel}: decode error - {exc}")
 
     def _ensure_connected(self) -> bool:
         if not self.serial_port or not self.serial_port.is_open:
@@ -565,11 +644,17 @@ class ElementCheckerApp(tk.Tk):
             if kind == "status":
                 self.status_var.set(value)
             elif kind == "temp":
-                channel_text, label = value.split("|", 1)
-                self.temperature_vars[int(channel_text) - 1].set(label)
+                device_text, channel_text, label = value.split("|", 2)
+                channel = int(channel_text)
+                self.temperature_vars[int(device_text)][channel - 1].set(f"{channel}\n{label}")
             elif kind == "telemetry":
-                channel_text, response_hex = value.split("|", 1)
-                self._handle_temperature_response(int(channel_text), bytes.fromhex(response_hex))
+                device_text, channel_text, slave_text, response_hex = value.split("|", 3)
+                self._handle_temperature_response(
+                    int(device_text),
+                    int(channel_text),
+                    bytes.fromhex(response_hex),
+                    int(slave_text),
+                )
             elif kind == "callback":
                 callback_id_text, response_hex = value.split("|", 1)
                 callback = self._pending_callbacks.pop(int(callback_id_text), None)
@@ -581,6 +666,8 @@ class ElementCheckerApp(tk.Tk):
 
     def _on_close(self) -> None:
         self._disconnect()
+        if self.settings_window is not None and self.settings_window.winfo_exists():
+            self.settings_window.destroy()
         self.destroy()
 
 

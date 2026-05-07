@@ -2,6 +2,8 @@
 
 Python/Tkinter utility for Modbus RTU requests and TM5104 telemetry.
 
+The main window contains connection controls, status, and three compact TM5104 telemetry panels. Port settings, shared Modbus settings, and the three device slave addresses are configured from the Settings window.
+
 ## Run
 
 ```powershell
@@ -10,7 +12,7 @@ python -m pip install -r requirements.txt
 python element_checker.py
 ```
 
-Telemetry buttons read 16 sensor channels from holding registers:
+Each device panel has 16 telemetry buttons. Buttons read sensor channels from holding registers:
 
 - Sensor 1: `0500`, quantity `2`
 - Sensor 2: `0502`, quantity `2`
