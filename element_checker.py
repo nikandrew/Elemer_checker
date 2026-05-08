@@ -8,7 +8,9 @@ import time
 import tkinter as tk
 import zipfile
 import csv
+import json
 from dataclasses import dataclass
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -47,6 +49,7 @@ TELEMETRY_CHANNELS = 16
 TELEMETRY_REGISTERS_PER_CHANNEL = 2
 DEVICE_COUNT = 3
 SETTINGS_FILE = "element_checker_settings.xlsx"
+CHANNEL_SETTINGS_FILE = "channel_settings.json"
 MEASUREMENTS_DIR = "measurements"
 MEASUREMENT_FLUSH_INTERVAL_SECONDS = 10 * 60
 TEMP_LOW_COLOR = "#9fd7ff"
@@ -77,8 +80,25 @@ class SensorSettings:
     num: str
     name: str
     used: bool
+    meter_channel: int = 1
     tmin: float | None = None
     tmax: float | None = None
+    sensor_type: str = "Термодатчик"
+    poll_period_s: float = 1.0
+    panel_zone: str = ""
+    show_temperature_graph: bool = True
+    show_heat_flux_graph: bool = False
+    sweep_linked: bool = False
+    limits_text: str = ""
+    graph_color: str = "#0b67d1"
+    graph_line_type: str = "Сплошная"
+    graph_line_width: int = 2
+    graph_visibility_percent: int = 100
+    graph_show_legend: bool = True
+    graph_priority: int = 1
+    calculation_flag: str = ""
+    calibration_a: float = 1.0
+    calibration_b: float = 0.0
 
 
 def modbus_crc(data: bytes) -> bytes:
@@ -180,7 +200,7 @@ def decode_tm5104_temperature(data: bytes) -> float:
 def _default_sensor_settings() -> list[list[SensorSettings]]:
     return [
         [
-            SensorSettings(num=f"{device + 1}_{channel}", name=str(channel), used=True)
+            SensorSettings(num=f"{device + 1}_{channel}", name=str(channel), used=True, meter_channel=channel)
             for channel in range(1, TELEMETRY_CHANNELS + 1)
         ]
         for device in range(DEVICE_COUNT)
@@ -291,11 +311,60 @@ def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | 
             num = row.get(num_column, "").strip() if num_column is not None else f"{device_index + 1}_{channel}"
             tmin = _optional_float(row.get(tmin_column, "")) if tmin_column is not None else None
             tmax = _optional_float(row.get(tmax_column, "")) if tmax_column is not None else None
-            sensors[device_index][channel - 1] = SensorSettings(num=num, name=name, used=used, tmin=tmin, tmax=tmax)
+            limits_text = ""
+            if tmin is not None or tmax is not None:
+                limits_text = f"{'' if tmin is None else tmin}..{'' if tmax is None else tmax}"
+            sensors[device_index][channel - 1] = SensorSettings(
+                num=num,
+                name=name,
+                used=used,
+                meter_channel=channel,
+                tmin=tmin,
+                tmax=tmax,
+                limits_text=limits_text,
+            )
     except Exception as exc:
         return sensors, f"{path.name}: failed to read settings: {exc}"
 
     return sensors, None
+
+
+def load_channel_settings(path: Path, sensors: list[list[SensorSettings]]) -> str | None:
+    if not path.exists():
+        return None
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        devices = payload.get("devices", [])
+        for device_index, device_settings in enumerate(devices):
+            if not 0 <= device_index < DEVICE_COUNT:
+                continue
+            channels = device_settings.get("channels", [])
+            for channel_index, channel_settings in enumerate(channels):
+                if not 0 <= channel_index < TELEMETRY_CHANNELS or not isinstance(channel_settings, dict):
+                    continue
+                sensor = sensors[device_index][channel_index]
+                for key, value in channel_settings.items():
+                    if hasattr(sensor, key):
+                        setattr(sensor, key, value)
+    except Exception as exc:
+        return f"{path.name}: failed to read channel settings: {exc}"
+
+    return None
+
+
+def save_channel_settings(path: Path, sensors: list[list[SensorSettings]]) -> None:
+    payload = {
+        "version": 1,
+        "devices": [
+            {
+                "device": device_index + 1,
+                "channels": [asdict(sensor) for sensor in device_settings],
+            }
+            for device_index, device_settings in enumerate(sensors)
+        ],
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 class ElementCheckerApp(tk.Tk):
@@ -317,6 +386,7 @@ class ElementCheckerApp(tk.Tk):
             [[] for _channel in range(TELEMETRY_CHANNELS)] for _device in range(DEVICE_COUNT)
         ]
         self.settings_window: tk.Toplevel | None = None
+        self.engineering_window: tk.Toplevel | None = None
         self.logs_window: tk.Toplevel | None = None
         self.logs_text: tk.Text | None = None
         self.graphs_window: tk.Toplevel | None = None
@@ -330,7 +400,19 @@ class ElementCheckerApp(tk.Tk):
         self.graph_y_min_var = tk.StringVar(value="")
         self.graph_y_max_var = tk.StringVar(value="")
         self.graph_points_var = tk.StringVar(value="100")
+        self.engineering_channel_buttons: list[list[tk.Button]] = []
+        self.engineering_detail_frame: ttk.LabelFrame | None = None
+        self.engineering_vars: dict[str, tk.Variable] = {}
+        self.engineering_selected: tuple[int, int] | None = None
         self.sensor_settings, self.sensor_settings_warning = load_sensor_settings(Path(__file__).with_name(SETTINGS_FILE))
+        self.channel_settings_path = Path(__file__).with_name(CHANNEL_SETTINGS_FILE)
+        channel_settings_warning = load_channel_settings(self.channel_settings_path, self.sensor_settings)
+        if channel_settings_warning:
+            self.sensor_settings_warning = (
+                f"{self.sensor_settings_warning}\n{channel_settings_warning}"
+                if self.sensor_settings_warning
+                else channel_settings_warning
+            )
         self.measurements_dir = Path(__file__).with_name(MEASUREMENTS_DIR)
         self.measurements_dir.mkdir(exist_ok=True)
         self.measurement_rows: list[dict[str, object]] = []
@@ -367,16 +449,19 @@ class ElementCheckerApp(tk.Tk):
 
         top_frame = ttk.Frame(self)
         top_frame.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="ew")
-        top_frame.columnconfigure(4, weight=1)
+        top_frame.columnconfigure(5, weight=1)
 
         self.connect_button = ttk.Button(top_frame, text="Connect port", command=self._toggle_port)
         self.connect_button.grid(row=0, column=0, padx=(0, 8), sticky="w")
         ttk.Button(top_frame, text="Settings", command=self._open_settings).grid(row=0, column=1, padx=(0, 12), sticky="w")
-        ttk.Button(top_frame, text="Logs", command=self._open_logs_window).grid(row=0, column=2, padx=(0, 12), sticky="w")
-        ttk.Button(top_frame, text="Graphs", command=self._open_graphs_window).grid(row=0, column=3, padx=(0, 12), sticky="w")
+        ttk.Button(top_frame, text="Инженерное меню", command=self._open_engineering_window).grid(
+            row=0, column=2, padx=(0, 12), sticky="w"
+        )
+        ttk.Button(top_frame, text="Logs", command=self._open_logs_window).grid(row=0, column=3, padx=(0, 12), sticky="w")
+        ttk.Button(top_frame, text="Graphs", command=self._open_graphs_window).grid(row=0, column=4, padx=(0, 12), sticky="w")
 
         self.status_var = tk.StringVar(value="Port disconnected")
-        ttk.Label(top_frame, textvariable=self.status_var, anchor="w").grid(row=0, column=4, sticky="ew")
+        ttk.Label(top_frame, textvariable=self.status_var, anchor="w").grid(row=0, column=5, sticky="ew")
 
         telemetry_frame = ttk.LabelFrame(self, text="TM5104 telemetry")
         telemetry_frame.grid(row=1, column=0, padx=12, pady=6, sticky="ew")
@@ -495,6 +580,29 @@ class ElementCheckerApp(tk.Tk):
             else:
                 color = TEMP_OK_COLOR
         button.configure(bg=color, activebackground=color)
+
+    def _apply_sensor_ui_state(self, device_index: int, channel: int) -> None:
+        sensor = self.sensor_settings[device_index][channel - 1]
+        button = self.temperature_buttons[device_index][channel - 1]
+        self._set_temperature_label(device_index, channel, "--")
+        if sensor.used:
+            button.configure(state="normal", bg=TEMP_IDLE_COLOR, activebackground=TEMP_IDLE_COLOR)
+        else:
+            button.configure(state="disabled", bg=TEMP_DISABLED_COLOR, activebackground=TEMP_DISABLED_COLOR)
+        if self.engineering_channel_buttons:
+            eng_button = self.engineering_channel_buttons[device_index][channel - 1]
+            color = self._engineering_button_color(device_index, channel)
+            relief = "solid" if self.engineering_selected == (device_index, channel) else "raised"
+            border_width = 6 if self.engineering_selected == (device_index, channel) else 2
+            eng_button.configure(
+                text=self._engineering_button_text(device_index, channel),
+                bg=color,
+                activebackground=color,
+                relief=relief,
+                bd=border_width,
+                highlightthickness=2 if self.engineering_selected == (device_index, channel) else 0,
+                highlightbackground="black",
+            )
 
     def _measurement_time_label(self, value: datetime) -> str:
         return value.strftime("%H%M_%d%m%y")
@@ -655,6 +763,369 @@ class ElementCheckerApp(tk.Tk):
             self.settings_window.destroy()
             self.settings_window = None
 
+    def _engineering_button_text(self, device_index: int, channel: int) -> str:
+        sensor = self.sensor_settings[device_index][channel - 1]
+        return f"{channel}\n{sensor.name}"
+
+    def _engineering_button_color(self, device_index: int, channel: int) -> str:
+        sensor = self.sensor_settings[device_index][channel - 1]
+        return TEMP_OK_COLOR if sensor.used else TEMP_DISABLED_COLOR
+
+    def _refresh_engineering_selection(self) -> None:
+        if not self.engineering_channel_buttons:
+            return
+        for device_index, buttons in enumerate(self.engineering_channel_buttons):
+            for channel_index, button in enumerate(buttons):
+                channel = channel_index + 1
+                color = self._engineering_button_color(device_index, channel)
+                relief = "solid" if self.engineering_selected == (device_index, channel) else "raised"
+                border_width = 6 if self.engineering_selected == (device_index, channel) else 2
+                button.configure(
+                    text=self._engineering_button_text(device_index, channel),
+                    bg=color,
+                    activebackground=color,
+                    relief=relief,
+                    bd=border_width,
+                    highlightthickness=2 if self.engineering_selected == (device_index, channel) else 0,
+                    highlightbackground="black",
+                )
+
+    def _open_engineering_window(self) -> None:
+        if self.engineering_window is not None and self.engineering_window.winfo_exists():
+            self.engineering_window.lift()
+            self.engineering_window.focus_set()
+            return
+
+        window = tk.Toplevel(self)
+        window.title("Инженерное меню")
+        window.geometry("1180x760")
+        window.protocol("WM_DELETE_WINDOW", self._close_engineering_window)
+        window.columnconfigure(0, weight=1)
+        window.columnconfigure(1, weight=2)
+        window.rowconfigure(0, weight=1)
+        self.engineering_window = window
+        self.engineering_channel_buttons = []
+        self.engineering_selected = None
+
+        channels_frame = ttk.Frame(window)
+        channels_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        channels_frame.columnconfigure(0, weight=1)
+        ttk.Button(
+            channels_frame,
+            text="Назначить цвета автоматически",
+            command=self._auto_assign_graph_styles,
+        ).grid(row=0, column=0, pady=(0, 8), sticky="ew")
+        for device_index in range(DEVICE_COUNT):
+            group_frame = ttk.LabelFrame(channels_frame, text=f"Элемер №{device_index + 1}")
+            group_frame.grid(row=device_index + 1, column=0, pady=6, sticky="ew")
+            for column in range(4):
+                group_frame.columnconfigure(column, weight=1)
+
+            group_buttons: list[tk.Button] = []
+            for channel in range(1, TELEMETRY_CHANNELS + 1):
+                sensor = self.sensor_settings[device_index][channel - 1]
+                color = TEMP_OK_COLOR if sensor.used else TEMP_DISABLED_COLOR
+                button = tk.Button(
+                    group_frame,
+                    text=self._engineering_button_text(device_index, channel),
+                    width=12,
+                    height=2,
+                    bg=color,
+                    activebackground=color,
+                    bd=2,
+                    relief="raised",
+                    command=lambda dev=device_index, ch=channel: self._show_engineering_channel(dev, ch),
+                )
+                button.grid(row=(channel - 1) // 4, column=(channel - 1) % 4, padx=4, pady=4, sticky="ew")
+                group_buttons.append(button)
+            self.engineering_channel_buttons.append(group_buttons)
+
+        self._refresh_engineering_selection()
+
+        self.engineering_detail_frame = ttk.LabelFrame(window, text="Настройки канала")
+        self.engineering_detail_frame.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
+        self.engineering_detail_frame.columnconfigure(1, weight=1)
+        ttk.Label(self.engineering_detail_frame, text="Выберите канал слева").grid(
+            row=0, column=0, padx=12, pady=12, sticky="w"
+        )
+
+    def _close_engineering_window(self) -> None:
+        if self.engineering_window is not None:
+            self.engineering_window.destroy()
+            self.engineering_window = None
+        self.engineering_detail_frame = None
+        self.engineering_channel_buttons = []
+        self.engineering_vars = {}
+        self.engineering_selected = None
+
+    def _auto_assign_graph_styles(self) -> None:
+        if not messagebox.askyesno(
+            "Подтверждение",
+            "Назначить цвета, толщины и типы линий автоматически для всех активных каналов?",
+            parent=self.engineering_window,
+        ):
+            return
+
+        palette = [
+            "#1f77b4",
+            "#ff7f0e",
+            "#2ca02c",
+            "#d62728",
+            "#9467bd",
+            "#8c564b",
+            "#e377c2",
+            "#7f7f7f",
+            "#bcbd22",
+            "#17becf",
+            "#00429d",
+            "#73a2c6",
+            "#f4777f",
+            "#93003a",
+            "#009392",
+            "#39b185",
+            "#9ccb86",
+            "#e9e29c",
+            "#eeb479",
+            "#e88471",
+            "#cf597e",
+            "#6c4c9c",
+            "#003f5c",
+            "#ffa600",
+        ]
+        line_types = ("Сплошная", "Пунктирная", "Точечная")
+        widths = (2, 3, 4)
+
+        active_index = 0
+        for device_index in range(DEVICE_COUNT):
+            for channel_index in range(TELEMETRY_CHANNELS):
+                sensor = self.sensor_settings[device_index][channel_index]
+                if not sensor.used:
+                    continue
+                sensor.graph_color = palette[active_index % len(palette)]
+                sensor.graph_line_type = line_types[(active_index // len(palette)) % len(line_types)]
+                sensor.graph_line_width = widths[(active_index // (len(palette) * len(line_types))) % len(widths)]
+                sensor.graph_visibility_percent = 100
+                sensor.graph_show_legend = True
+                sensor.graph_priority = min(active_index + 1, 48)
+                active_index += 1
+
+        try:
+            save_channel_settings(self.channel_settings_path, self.sensor_settings)
+        except Exception as exc:
+            messagebox.showerror("Ошибка сохранения JSON", str(exc), parent=self.engineering_window)
+            return
+
+        if self.engineering_selected is not None:
+            device_index, channel = self.engineering_selected
+            self._show_engineering_channel(device_index, channel)
+        else:
+            self._refresh_engineering_selection()
+        if self.graphs_window is not None and self.graphs_window.winfo_exists():
+            self._draw_graphs()
+        self._append_log(f"Automatic graph styles assigned for {active_index} active channel(s)")
+        self.status_var.set("Graph styles assigned automatically")
+
+    def _show_engineering_channel(self, device_index: int, channel: int) -> None:
+        if self.engineering_detail_frame is None:
+            return
+
+        for child in self.engineering_detail_frame.winfo_children():
+            child.destroy()
+
+        sensor = self.sensor_settings[device_index][channel - 1]
+        self.engineering_selected = (device_index, channel)
+        self._refresh_engineering_selection()
+        self.engineering_detail_frame.configure(text=f"Элемер №{device_index + 1}, канал {channel}")
+        self.engineering_vars = {
+            "meter_channel": tk.StringVar(value=str(sensor.meter_channel)),
+            "name": tk.StringVar(value=sensor.name),
+            "sensor_type": tk.StringVar(value=sensor.sensor_type),
+            "used": tk.StringVar(value="Активен" if sensor.used else "Выключен"),
+            "poll_period_s": tk.StringVar(value=str(sensor.poll_period_s).replace(".", ",")),
+            "panel_zone": tk.StringVar(value=sensor.panel_zone),
+            "show_temperature_graph": tk.StringVar(value="Отображать" if sensor.show_temperature_graph else "Нет"),
+            "show_heat_flux_graph": tk.StringVar(value="Отображать" if sensor.show_heat_flux_graph else "Нет"),
+            "sweep_linked": tk.StringVar(value="Привязан" if sensor.sweep_linked else "Нет"),
+            "limits_text": tk.StringVar(value=sensor.limits_text),
+            "graph_color": tk.StringVar(value=sensor.graph_color),
+            "graph_line_type": tk.StringVar(value=sensor.graph_line_type),
+            "graph_line_width": tk.StringVar(value=str(sensor.graph_line_width)),
+            "graph_visibility_percent": tk.StringVar(value=str(sensor.graph_visibility_percent)),
+            "graph_show_legend": tk.StringVar(value="Отображать" if sensor.graph_show_legend else "Нет"),
+            "graph_priority": tk.StringVar(value=str(sensor.graph_priority)),
+            "calculation_flag": tk.StringVar(value=sensor.calculation_flag),
+            "calibration_a": tk.StringVar(value=str(sensor.calibration_a).replace(".", ",")),
+            "calibration_b": tk.StringVar(value=str(sensor.calibration_b).replace(".", ",")),
+        }
+
+        fields = [
+            ("Номер канала измерителя", "meter_channel", "entry"),
+            ("Наименование канала", "name", "entry"),
+            ("Тип датчика / назначение", "sensor_type", ("Термодатчик", "Датчик теплового потока")),
+            ("Признак активности", "used", ("Активен", "Выключен")),
+            ("Период опроса, с", "poll_period_s", "entry"),
+            ("Панель / группа / зона", "panel_zone", "entry"),
+            ("График температуры", "show_temperature_graph", ("Отображать", "Нет")),
+            ("График теплового потока", "show_heat_flux_graph", ("Отображать", "Нет")),
+            ("Поле развертки", "sweep_linked", ("Привязан", "Нет")),
+            ("Допустимые пределы", "limits_text", "entry"),
+            ("Настройки линии графика", "graph_line_settings", "line_settings"),
+            ("Линейная калибровка", "calibration", "calibration"),
+            ("Участие в расчетах", "calculation_flag", "entry"),
+        ]
+
+        for row, (label, key, editor) in enumerate(fields):
+            ttk.Label(self.engineering_detail_frame, text=label).grid(row=row, column=0, padx=8, pady=5, sticky="w")
+            if isinstance(editor, tuple):
+                ttk.Combobox(
+                    self.engineering_detail_frame,
+                    textvariable=self.engineering_vars[key],
+                    values=editor,
+                    state="readonly",
+                ).grid(row=row, column=1, padx=8, pady=5, sticky="ew")
+            elif editor == "line_settings":
+                line_frame = ttk.LabelFrame(self.engineering_detail_frame, text="Линия")
+                line_frame.grid(row=row, column=1, padx=8, pady=5, sticky="ew")
+                line_frame.columnconfigure(1, weight=1)
+                line_frame.columnconfigure(3, weight=1)
+
+                ttk.Label(line_frame, text="Цвет").grid(row=0, column=0, padx=6, pady=4, sticky="w")
+                ttk.Entry(line_frame, textvariable=self.engineering_vars["graph_color"], width=14).grid(
+                    row=0, column=1, padx=6, pady=4, sticky="ew"
+                )
+                color_swatch = tk.Label(line_frame, width=4, relief="solid", bd=1)
+                color_swatch.grid(row=0, column=2, padx=6, pady=4, sticky="ns")
+
+                def update_swatch(*_args, variable=self.engineering_vars["graph_color"], swatch=color_swatch) -> None:
+                    color = variable.get().strip() or "#0b67d1"
+                    try:
+                        swatch.configure(bg=color)
+                    except tk.TclError:
+                        swatch.configure(bg=TEMP_DISABLED_COLOR)
+
+                self.engineering_vars["graph_color"].trace_add("write", update_swatch)
+                update_swatch()
+
+                ttk.Label(line_frame, text="Тип").grid(row=1, column=0, padx=6, pady=4, sticky="w")
+                ttk.Combobox(
+                    line_frame,
+                    textvariable=self.engineering_vars["graph_line_type"],
+                    values=("Сплошная", "Пунктирная", "Точечная"),
+                    state="readonly",
+                ).grid(row=1, column=1, columnspan=3, padx=6, pady=4, sticky="ew")
+
+                ttk.Label(line_frame, text="Толщина").grid(row=2, column=0, padx=6, pady=4, sticky="w")
+                ttk.Entry(line_frame, textvariable=self.engineering_vars["graph_line_width"], width=10).grid(
+                    row=2, column=1, padx=6, pady=4, sticky="ew"
+                )
+                ttk.Label(line_frame, text="Видимость, %").grid(row=2, column=2, padx=6, pady=4, sticky="w")
+                ttk.Entry(line_frame, textvariable=self.engineering_vars["graph_visibility_percent"], width=10).grid(
+                    row=2, column=3, padx=6, pady=4, sticky="ew"
+                )
+
+                ttk.Label(line_frame, text="Легенда").grid(row=3, column=0, padx=6, pady=4, sticky="w")
+                ttk.Combobox(
+                    line_frame,
+                    textvariable=self.engineering_vars["graph_show_legend"],
+                    values=("Отображать", "Нет"),
+                    state="readonly",
+                ).grid(row=3, column=1, padx=6, pady=4, sticky="ew")
+                ttk.Label(line_frame, text="Приоритет").grid(row=3, column=2, padx=6, pady=4, sticky="w")
+                ttk.Entry(line_frame, textvariable=self.engineering_vars["graph_priority"], width=10).grid(
+                    row=3, column=3, padx=6, pady=4, sticky="ew"
+                )
+            elif editor == "calibration":
+                calibration_frame = ttk.Frame(self.engineering_detail_frame)
+                calibration_frame.grid(row=row, column=1, padx=8, pady=5, sticky="ew")
+                calibration_frame.columnconfigure(1, weight=1)
+                calibration_frame.columnconfigure(3, weight=1)
+                ttk.Label(calibration_frame, text="a=").grid(row=0, column=0, sticky="w")
+                ttk.Entry(calibration_frame, textvariable=self.engineering_vars["calibration_a"], width=12).grid(
+                    row=0, column=1, padx=(4, 12), sticky="ew"
+                )
+                ttk.Label(calibration_frame, text="b=").grid(row=0, column=2, sticky="w")
+                ttk.Entry(calibration_frame, textvariable=self.engineering_vars["calibration_b"], width=12).grid(
+                    row=0, column=3, padx=(4, 0), sticky="ew"
+                )
+            else:
+                ttk.Entry(self.engineering_detail_frame, textvariable=self.engineering_vars[key]).grid(
+                    row=row, column=1, padx=8, pady=5, sticky="ew"
+                )
+
+        button_frame = ttk.Frame(self.engineering_detail_frame)
+        button_frame.grid(row=len(fields), column=0, columnspan=2, padx=8, pady=(12, 4), sticky="ew")
+        button_frame.columnconfigure(0, weight=1)
+        button_frame.columnconfigure(1, weight=1)
+        ttk.Button(button_frame, text="Сохранить канал", command=self._save_engineering_channel).grid(
+            row=0, column=0, columnspan=2, sticky="ew"
+        )
+
+    def _save_engineering_channel(self) -> None:
+        if self.engineering_selected is None:
+            return
+        device_index, channel = self.engineering_selected
+        sensor = self.sensor_settings[device_index][channel - 1]
+
+        try:
+            poll_period_s = float(self.engineering_vars["poll_period_s"].get().replace(",", "."))
+            if not 0.5 <= poll_period_s <= 2.0:
+                raise ValueError("Период опроса должен быть от 0,5 до 2 секунд")
+            line_width = int(self.engineering_vars["graph_line_width"].get())
+            if line_width <= 0:
+                raise ValueError("Толщина линии должна быть положительным целым числом")
+            visibility_percent = int(self.engineering_vars["graph_visibility_percent"].get())
+            if not 0 <= visibility_percent <= 100:
+                raise ValueError("Видимость линии должна быть от 0 до 100 процентов")
+            graph_priority = int(self.engineering_vars["graph_priority"].get())
+            if not 1 <= graph_priority <= 48:
+                raise ValueError("Приоритет отображения должен быть от 1 до 48")
+            meter_channel = int(self.engineering_vars["meter_channel"].get())
+            if meter_channel <= 0:
+                raise ValueError("Номер канала измерителя должен быть положительным целым числом")
+            calibration_a = float(self.engineering_vars["calibration_a"].get().replace(",", "."))
+            calibration_b = float(self.engineering_vars["calibration_b"].get().replace(",", "."))
+        except Exception as exc:
+            messagebox.showerror("Ошибка настроек канала", str(exc))
+            return
+
+        if not messagebox.askyesno(
+            "Подтверждение сохранения",
+            "Вы точно хотите сохранить параметры канала?",
+            parent=self.engineering_window,
+        ):
+            return
+
+        sensor.meter_channel = meter_channel
+        sensor.name = self.engineering_vars["name"].get().strip() or sensor.num
+        sensor.sensor_type = self.engineering_vars["sensor_type"].get()
+        sensor.used = self.engineering_vars["used"].get() == "Активен"
+        sensor.poll_period_s = poll_period_s
+        sensor.panel_zone = self.engineering_vars["panel_zone"].get().strip()
+        sensor.show_temperature_graph = self.engineering_vars["show_temperature_graph"].get() == "Отображать"
+        sensor.show_heat_flux_graph = self.engineering_vars["show_heat_flux_graph"].get() == "Отображать"
+        sensor.sweep_linked = self.engineering_vars["sweep_linked"].get() == "Привязан"
+        sensor.limits_text = self.engineering_vars["limits_text"].get().strip()
+        sensor.graph_color = self.engineering_vars["graph_color"].get().strip() or "#0b67d1"
+        sensor.graph_line_type = self.engineering_vars["graph_line_type"].get()
+        sensor.graph_line_width = line_width
+        sensor.graph_visibility_percent = visibility_percent
+        sensor.graph_show_legend = self.engineering_vars["graph_show_legend"].get() == "Отображать"
+        sensor.graph_priority = graph_priority
+        sensor.calculation_flag = self.engineering_vars["calculation_flag"].get().strip()
+        sensor.calibration_a = calibration_a
+        sensor.calibration_b = calibration_b
+        try:
+            save_channel_settings(self.channel_settings_path, self.sensor_settings)
+        except Exception as exc:
+            messagebox.showerror("Ошибка сохранения JSON", str(exc))
+            return
+
+        self._apply_sensor_ui_state(device_index, channel)
+        if self.graphs_window is not None and self.graphs_window.winfo_exists():
+            self._draw_graphs()
+        self.status_var.set(f"Channel saved: Elemer {device_index + 1}, channel {channel}")
+        self._append_log(f"Engineering settings saved for Elemer {device_index + 1}, channel {channel}")
+
     def _open_logs_window(self) -> None:
         if self.logs_window is not None and self.logs_window.winfo_exists():
             self.logs_window.lift()
@@ -698,6 +1169,8 @@ class ElementCheckerApp(tk.Tk):
         self.graph_option_map = {}
         for device_index in range(DEVICE_COUNT):
             for channel_index in range(TELEMETRY_CHANNELS):
+                if not self.sensor_settings[device_index][channel_index].show_temperature_graph:
+                    continue
                 label = self._sensor_option_label(device_index, channel_index)
                 options.append(label)
                 self.graph_option_map[label] = (device_index, channel_index)
@@ -822,6 +1295,30 @@ class ElementCheckerApp(tk.Tk):
             y_max += 1.0
         return y_min, y_max
 
+    def _series_style(self, label: str, fallback_color: str) -> tuple[str, int, tuple[int, ...] | None, str | None, bool]:
+        sensor_ref = self.graph_option_map.get(label)
+        if sensor_ref is None:
+            return fallback_color, 2, None, None, True
+        device_index, channel_index = sensor_ref
+        sensor = self.sensor_settings[device_index][channel_index]
+        color = sensor.graph_color or fallback_color
+        width = max(1, sensor.graph_line_width)
+        dash = None
+        if sensor.graph_line_type == "Пунктирная":
+            dash = (6, 3)
+        elif sensor.graph_line_type == "Точечная":
+            dash = (2, 3)
+        stipple = None
+        if sensor.graph_visibility_percent <= 0:
+            stipple = "gray12"
+        elif sensor.graph_visibility_percent < 35:
+            stipple = "gray25"
+        elif sensor.graph_visibility_percent < 70:
+            stipple = "gray50"
+        elif sensor.graph_visibility_percent < 100:
+            stipple = "gray75"
+        return color, width, dash, stipple, sensor.graph_show_legend
+
     def _draw_series_canvas(self, canvas: tk.Canvas, series: list[tuple[str, list[float]]]) -> None:
         canvas.delete("all")
         width = max(canvas.winfo_width(), 240)
@@ -844,6 +1341,14 @@ class ElementCheckerApp(tk.Tk):
         canvas.create_text(6, height - margin_bottom - 12, text=f"{y_min:.1f}", anchor="nw", fill="#666666")
         colors = ("#0b67d1", "#c23b22", "#2f8f2f", "#8a2be2", "#d18f00", "#008b8b", "#444444", "#e377c2")
 
+        non_empty = sorted(
+            non_empty,
+            key=lambda item: self.sensor_settings[self.graph_option_map[item[0]][0]][self.graph_option_map[item[0]][1]].graph_priority
+            if item[0] in self.graph_option_map
+            else 48,
+        )
+
+        legend_row = 0
         for series_index, (label, values) in enumerate(non_empty):
             points: list[float] = []
             count = len(values)
@@ -852,11 +1357,14 @@ class ElementCheckerApp(tk.Tk):
                 y = margin_top + plot_height - ((value - y_min) / (y_max - y_min) * plot_height)
                 points.extend([x, y])
             color = colors[series_index % len(colors)]
+            color, line_width, dash, stipple, show_legend = self._series_style(label, color)
             if len(points) >= 4:
-                canvas.create_line(*points, fill=color, width=2)
+                canvas.create_line(*points, fill=color, width=line_width, dash=dash, stipple=stipple)
             else:
                 canvas.create_oval(points[0] - 2, points[1] - 2, points[0] + 2, points[1] + 2, fill=color, outline=color)
-            canvas.create_text(margin_left + 6, margin_top + 12 + series_index * 14, text=label, anchor="w", fill=color)
+            if show_legend:
+                canvas.create_text(margin_left + 6, margin_top + 12 + legend_row * 14, text=label, anchor="w", fill=color)
+                legend_row += 1
 
     def _series_values(self, option: str) -> list[float]:
         sensor_ref = self.graph_option_map.get(option)
@@ -1283,6 +1791,8 @@ class ElementCheckerApp(tk.Tk):
         self._disconnect()
         if self.settings_window is not None and self.settings_window.winfo_exists():
             self.settings_window.destroy()
+        if self.engineering_window is not None and self.engineering_window.winfo_exists():
+            self.engineering_window.destroy()
         if self.logs_window is not None and self.logs_window.winfo_exists():
             self.logs_window.destroy()
         if self.graphs_window is not None and self.graphs_window.winfo_exists():
