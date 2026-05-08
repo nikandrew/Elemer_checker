@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import math
+import os
 import queue
 import struct
 import threading
 import time
 import tkinter as tk
+import webbrowser
 import zipfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import messagebox, ttk
 from xml.etree import ElementTree
@@ -18,6 +21,16 @@ try:
 except ImportError:  # pragma: no cover - shown in UI at runtime
     serial = None
     list_ports = None
+
+try:
+    import psycopg
+except ImportError:  # pragma: no cover - shown in UI at runtime
+    psycopg = None
+
+try:
+    import psycopg2
+except ImportError:  # pragma: no cover - shown in UI at runtime
+    psycopg2 = None
 
 
 FUNCTIONS = {
@@ -46,6 +59,13 @@ TELEMETRY_CHANNELS = 16
 TELEMETRY_REGISTERS_PER_CHANNEL = 2
 DEVICE_COUNT = 3
 SETTINGS_FILE = "element_checker_settings.xlsx"
+DEFAULT_DB_DSN = os.environ.get("ELEMER_DB_DSN", "postgresql://postgres:postgres@localhost:5432/elemer_checker")
+DEFAULT_GRAFANA_URL = os.environ.get("ELEMER_GRAFANA_URL", "http://localhost:3000")
+TEMP_LOW_COLOR = "#9fd7ff"
+TEMP_OK_COLOR = "#9fe6a0"
+TEMP_HIGH_COLOR = "#ff9b9b"
+TEMP_IDLE_COLOR = "#f0f0f0"
+TEMP_DISABLED_COLOR = "#d9d9d9"
 
 
 @dataclass
@@ -66,8 +86,11 @@ class ModbusResult:
 
 @dataclass
 class SensorSettings:
+    num: str
     name: str
     used: bool
+    tmin: float | None = None
+    tmax: float | None = None
 
 
 def modbus_crc(data: bytes) -> bytes:
@@ -168,8 +191,11 @@ def decode_tm5104_temperature(data: bytes) -> float:
 
 def _default_sensor_settings() -> list[list[SensorSettings]]:
     return [
-        [SensorSettings(name=str(channel), used=True) for channel in range(1, TELEMETRY_CHANNELS + 1)]
-        for _device in range(DEVICE_COUNT)
+        [
+            SensorSettings(num=f"{device + 1}_{channel}", name=str(channel), used=True)
+            for channel in range(1, TELEMETRY_CHANNELS + 1)
+        ]
+        for device in range(DEVICE_COUNT)
     ]
 
 
@@ -217,6 +243,16 @@ def _used_value(value: str) -> bool:
         return False
 
 
+def _optional_float(value: str) -> float | None:
+    value = value.strip().replace(",", ".")
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
 def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | None]:
     sensors = _default_sensor_settings()
     if not path.exists():
@@ -235,6 +271,8 @@ def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | 
         num_column = headers.get("num")
         name_column = headers.get("name")
         used_column = headers.get("used")
+        tmin_column = headers.get("tmin")
+        tmax_column = headers.get("tmax")
 
         if name_column is None or used_column is None:
             return sensors, f"{path.name}: Name/Used columns not found, all sensors enabled"
@@ -262,11 +300,128 @@ def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | 
 
             name = row.get(name_column, "").strip() or str(channel)
             used = _used_value(row.get(used_column, ""))
-            sensors[device_index][channel - 1] = SensorSettings(name=name, used=used)
+            num = row.get(num_column, "").strip() if num_column is not None else f"{device_index + 1}_{channel}"
+            tmin = _optional_float(row.get(tmin_column, "")) if tmin_column is not None else None
+            tmax = _optional_float(row.get(tmax_column, "")) if tmax_column is not None else None
+            sensors[device_index][channel - 1] = SensorSettings(num=num, name=name, used=used, tmin=tmin, tmax=tmax)
     except Exception as exc:
         return sensors, f"{path.name}: failed to read settings: {exc}"
 
     return sensors, None
+
+
+class TemperatureDatabase:
+    def __init__(self, dsn_getter) -> None:
+        self.dsn_getter = dsn_getter
+        self.connection = None
+        self.connected_dsn = ""
+        self.initialized = False
+        self.lock = threading.Lock()
+
+    def _close_locked(self) -> None:
+        if self.connection is not None:
+            try:
+                self.connection.close()
+            except Exception:
+                pass
+        self.connection = None
+        self.connected_dsn = ""
+        self.initialized = False
+
+    def close(self) -> None:
+        with self.lock:
+            self._close_locked()
+
+    def _driver(self):
+        if psycopg is not None:
+            return psycopg
+        if psycopg2 is not None:
+            return psycopg2
+        raise RuntimeError("Install PostgreSQL driver: python -m pip install psycopg[binary]")
+
+    def _connect(self):
+        dsn = self.dsn_getter().strip()
+        if not dsn:
+            raise RuntimeError("PostgreSQL DSN is empty")
+        if self.connection is not None and self.connected_dsn == dsn:
+            return self.connection
+
+        self._close_locked()
+        driver = self._driver()
+        connection = driver.connect(dsn)
+        connection.autocommit = True
+        self.connection = connection
+        self.connected_dsn = dsn
+        self.initialized = False
+        return connection
+
+    def _execute(self, sql: str, params: tuple = ()) -> None:
+        assert self.connection is not None
+        with self.connection.cursor() as cursor:
+            cursor.execute(sql, params)
+
+    def _initialize_locked(self) -> None:
+        self._connect()
+        if self.initialized:
+            return
+        self._execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
+        self._execute(
+            """
+            CREATE TABLE IF NOT EXISTS temperature_measurements (
+                time TIMESTAMPTZ NOT NULL,
+                group_id INTEGER NOT NULL,
+                sensor_sn INTEGER NOT NULL,
+                sensor_num TEXT NOT NULL,
+                sensor_name TEXT NOT NULL,
+                temperature DOUBLE PRECISION NOT NULL,
+                tmin DOUBLE PRECISION,
+                tmax DOUBLE PRECISION,
+                slave_addr INTEGER NOT NULL
+            )
+            """
+        )
+        self._execute(
+            "SELECT create_hypertable('temperature_measurements', 'time', if_not_exists => TRUE)"
+        )
+        self.initialized = True
+
+    def initialize(self) -> None:
+        with self.lock:
+            self._initialize_locked()
+
+    def insert_temperature(
+        self,
+        timestamp: datetime,
+        device_index: int,
+        channel: int,
+        sensor: SensorSettings,
+        temperature: float,
+        slave_addr: int,
+    ) -> None:
+        with self.lock:
+            self._connect()
+            if not self.initialized:
+                self._initialize_locked()
+            self._execute(
+                """
+                INSERT INTO temperature_measurements (
+                    time, group_id, sensor_sn, sensor_num, sensor_name,
+                    temperature, tmin, tmax, slave_addr
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    timestamp,
+                    device_index + 1,
+                    channel,
+                    sensor.num,
+                    sensor.name,
+                    temperature,
+                    sensor.tmin,
+                    sensor.tmax,
+                    slave_addr,
+                ),
+            )
 
 
 class ElementCheckerApp(tk.Tk):
@@ -282,8 +437,11 @@ class ElementCheckerApp(tk.Tk):
         self.auto_poll_after_id = None
         self.temperature_poll_running = False
         self.temperature_vars: list[list[tk.StringVar]] = []
-        self.temperature_buttons: list[list[ttk.Button]] = []
+        self.temperature_buttons: list[list[tk.Button]] = []
+        self.temperature_history: list[list[list[float]]] = [[[] for _channel in range(TELEMETRY_CHANNELS)] for _device in range(DEVICE_COUNT)]
         self.settings_window: tk.Toplevel | None = None
+        self.grafana_window: tk.Toplevel | None = None
+        self.db_error_reported = False
         self.sensor_settings, self.sensor_settings_warning = load_sensor_settings(Path(__file__).with_name(SETTINGS_FILE))
 
         self.port_var = tk.StringVar(value="COM22")
@@ -301,6 +459,9 @@ class ElementCheckerApp(tk.Tk):
         self.auto_poll_interval_var = tk.StringVar(value="1000")
         self.auto_poll_unit_var = tk.StringVar(value="ms")
         self.auto_poll_status_var = tk.StringVar(value="Auto poll stopped")
+        self.db_dsn_var = tk.StringVar(value=DEFAULT_DB_DSN)
+        self.grafana_url_var = tk.StringVar(value=DEFAULT_GRAFANA_URL)
+        self.database = TemperatureDatabase(lambda: self.db_dsn_var.get())
         self.quantity_var.trace_add("write", lambda *_args: self._refresh_expected())
 
         self._build_ui()
@@ -316,14 +477,15 @@ class ElementCheckerApp(tk.Tk):
 
         top_frame = ttk.Frame(self)
         top_frame.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="ew")
-        top_frame.columnconfigure(2, weight=1)
+        top_frame.columnconfigure(3, weight=1)
 
         self.connect_button = ttk.Button(top_frame, text="Connect port", command=self._toggle_port)
         self.connect_button.grid(row=0, column=0, padx=(0, 8), sticky="w")
         ttk.Button(top_frame, text="Settings", command=self._open_settings).grid(row=0, column=1, padx=(0, 12), sticky="w")
+        ttk.Button(top_frame, text="Grafana", command=self._open_grafana_window).grid(row=0, column=2, padx=(0, 12), sticky="w")
 
         self.status_var = tk.StringVar(value="Port disconnected")
-        ttk.Label(top_frame, textvariable=self.status_var, anchor="w").grid(row=0, column=2, sticky="ew")
+        ttk.Label(top_frame, textvariable=self.status_var, anchor="w").grid(row=0, column=3, sticky="ew")
 
         telemetry_frame = ttk.LabelFrame(self, text="TM5104 telemetry")
         telemetry_frame.grid(row=1, column=0, padx=12, pady=6, sticky="ew")
@@ -345,7 +507,7 @@ class ElementCheckerApp(tk.Tk):
             ).grid(row=0, column=2, columnspan=2, padx=4, pady=(4, 2), sticky="w")
 
             device_values: list[tk.StringVar] = []
-            device_buttons: list[ttk.Button] = []
+            device_buttons: list[tk.Button] = []
             for index in range(TELEMETRY_CHANNELS):
                 channel = index + 1
                 row = index // 4 + 1
@@ -354,15 +516,19 @@ class ElementCheckerApp(tk.Tk):
                 value_var = tk.StringVar(value=self._sensor_label(device_index, channel, "--"))
                 device_values.append(value_var)
 
-                button = ttk.Button(
+                button = tk.Button(
                     device_frame,
                     textvariable=value_var,
                     width=8,
+                    height=3,
+                    relief="raised",
+                    bg=TEMP_IDLE_COLOR,
+                    activebackground=TEMP_IDLE_COLOR,
                     command=lambda dev=device_index, selected=channel: self._request_temperature(dev, selected),
                 )
                 button.grid(row=row, column=column, padx=3, pady=3, sticky="nsew")
                 if not sensor.used:
-                    button.state(["disabled"])
+                    button.configure(state="disabled", bg=TEMP_DISABLED_COLOR, activebackground=TEMP_DISABLED_COLOR)
                 device_buttons.append(button)
 
             self.temperature_vars.append(device_values)
@@ -420,12 +586,38 @@ class ElementCheckerApp(tk.Tk):
         response_scroll.grid(row=0, column=1, sticky="ns")
         self.response_text.configure(yscrollcommand=response_scroll.set)
 
+    def _sensor_trend(self, device_index: int, channel: int) -> str:
+        history = self.temperature_history[device_index][channel - 1]
+        if len(history) < 10:
+            return ""
+        recent = history[-10:]
+        first_avg = sum(recent[:5]) / 5
+        last_avg = sum(recent[5:]) / 5
+        delta = last_avg - first_avg
+        if abs(delta) <= 2.0:
+            return "✕"
+        return "↑" if delta > 0 else "↓"
+
     def _sensor_label(self, device_index: int, channel: int, value: str) -> str:
         name = self.sensor_settings[device_index][channel - 1].name
-        return f"{name}\n{value}"
+        trend = self._sensor_trend(device_index, channel)
+        return f"{name}\n{value} {trend}".rstrip()
 
     def _set_temperature_label(self, device_index: int, channel: int, value: str) -> None:
         self.temperature_vars[device_index][channel - 1].set(self._sensor_label(device_index, channel, value))
+
+    def _set_temperature_color(self, device_index: int, channel: int, temperature: float | None) -> None:
+        button = self.temperature_buttons[device_index][channel - 1]
+        sensor = self.sensor_settings[device_index][channel - 1]
+        color = TEMP_IDLE_COLOR
+        if temperature is not None:
+            if sensor.tmin is not None and temperature < sensor.tmin:
+                color = TEMP_LOW_COLOR
+            elif sensor.tmax is not None and temperature > sensor.tmax:
+                color = TEMP_HIGH_COLOR
+            else:
+                color = TEMP_OK_COLOR
+        button.configure(bg=color, activebackground=color)
 
     def _open_settings(self) -> None:
         if self.settings_window is not None and self.settings_window.winfo_exists():
@@ -517,12 +709,78 @@ class ElementCheckerApp(tk.Tk):
             row=1, column=6, padx=8, pady=8, sticky="ew"
         )
 
-        ttk.Button(window, text="Close", command=self._close_settings).grid(row=3, column=0, padx=12, pady=(6, 12), sticky="e")
+        storage_frame = ttk.LabelFrame(window, text="Storage and Grafana")
+        storage_frame.grid(row=3, column=0, padx=12, pady=6, sticky="ew")
+        storage_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(storage_frame, text="PostgreSQL DSN").grid(row=0, column=0, padx=8, pady=8, sticky="w")
+        ttk.Entry(storage_frame, textvariable=self.db_dsn_var, width=64).grid(row=0, column=1, padx=8, pady=8, sticky="ew")
+        ttk.Button(storage_frame, text="Test DB", command=self._test_database).grid(row=0, column=2, padx=8, pady=8, sticky="ew")
+
+        ttk.Label(storage_frame, text="Grafana URL").grid(row=1, column=0, padx=8, pady=8, sticky="w")
+        ttk.Entry(storage_frame, textvariable=self.grafana_url_var, width=64).grid(row=1, column=1, padx=8, pady=8, sticky="ew")
+        ttk.Button(storage_frame, text="Open", command=self._open_grafana_window).grid(row=1, column=2, padx=8, pady=8, sticky="ew")
+
+        ttk.Button(window, text="Close", command=self._close_settings).grid(row=4, column=0, padx=12, pady=(6, 12), sticky="e")
 
     def _close_settings(self) -> None:
         if self.settings_window is not None:
             self.settings_window.destroy()
             self.settings_window = None
+
+    def _test_database(self) -> None:
+        def worker() -> None:
+            try:
+                self.database.initialize()
+                self.db_error_reported = False
+                self.ui_queue.put(("status", "Database connected"))
+                self.ui_queue.put(("log", "Database connected and TimescaleDB table is ready"))
+            except Exception as exc:
+                self.ui_queue.put(("status", "Database connection error"))
+                self.ui_queue.put(("log", f"Database connection error: {exc}"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _open_grafana_window(self) -> None:
+        if self.grafana_window is not None and self.grafana_window.winfo_exists():
+            self.grafana_window.lift()
+            self.grafana_window.focus_set()
+            return
+
+        window = tk.Toplevel(self)
+        window.title("Grafana")
+        window.transient(self)
+        window.geometry("640x220")
+        window.protocol("WM_DELETE_WINDOW", self._close_grafana_window)
+        self.grafana_window = window
+        window.columnconfigure(0, weight=1)
+
+        ttk.Label(window, text="Grafana URL").grid(row=0, column=0, padx=12, pady=(12, 4), sticky="w")
+        ttk.Entry(window, textvariable=self.grafana_url_var).grid(row=1, column=0, padx=12, pady=4, sticky="ew")
+        ttk.Button(window, text="Open Grafana", command=self._open_grafana_in_browser).grid(
+            row=1, column=1, padx=12, pady=4, sticky="ew"
+        )
+        ttk.Label(
+            window,
+            text="Use PostgreSQL/TimescaleDB table temperature_measurements as the Grafana data source.",
+            anchor="w",
+        ).grid(row=2, column=0, columnspan=2, padx=12, pady=8, sticky="ew")
+        ttk.Label(
+            window,
+            text="Recommended time column: time; value column: temperature; dimensions: group_id, sensor_sn, sensor_name.",
+            anchor="w",
+        ).grid(row=3, column=0, columnspan=2, padx=12, pady=4, sticky="ew")
+
+        self._open_grafana_in_browser()
+
+    def _open_grafana_in_browser(self) -> None:
+        url = self.grafana_url_var.get().strip() or DEFAULT_GRAFANA_URL
+        webbrowser.open(url)
+
+    def _close_grafana_window(self) -> None:
+        if self.grafana_window is not None:
+            self.grafana_window.destroy()
+            self.grafana_window = None
 
 
     def _available_ports(self) -> tuple[str, ...]:
@@ -639,7 +897,7 @@ class ElementCheckerApp(tk.Tk):
             request,
             9,
             lambda response, dev=device_index, selected=channel, slave_addr=settings.slave_addr: self._handle_temperature_response(
-                dev, selected, response, slave_addr
+                dev, selected, response, slave_addr, False
             ),
         )
 
@@ -670,7 +928,10 @@ class ElementCheckerApp(tk.Tk):
                             request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
                             self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
                             response = self._transact(request, 9)
-                            self.ui_queue.put(("telemetry", f"{device_index}|{channel}|{settings.slave_addr}|{response.hex()}"))
+                            save_to_db = 1 if auto else 0
+                            self.ui_queue.put(
+                                ("telemetry", f"{device_index}|{channel}|{settings.slave_addr}|{save_to_db}|{response.hex()}")
+                            )
                             time.sleep(max(0.02, settings.scan_rate_ms / 1000 / 10))
                         except Exception as exc:
                             self.ui_queue.put(("temp", f"{device_index}|{channel}|error"))
@@ -729,23 +990,54 @@ class ElementCheckerApp(tk.Tk):
         self.status_var.set("Manual response valid" if result.valid else f"Manual response invalid: {result.message}")
         self._append_log(f"Check: {result.message}")
 
-    def _handle_temperature_response(self, device_index: int, channel: int, response: bytes, slave_addr: int) -> None:
+    def _handle_temperature_response(
+        self,
+        device_index: int,
+        channel: int,
+        response: bytes,
+        slave_addr: int,
+        save_to_db: bool,
+    ) -> None:
         try:
             result = validate_read_response(response, slave_addr, 0x03, 4)
             if not result.valid:
                 self._set_temperature_label(device_index, channel, "invalid")
+                self._set_temperature_color(device_index, channel, None)
                 self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {result.message}")
                 self._append_log(f"Device {device_index + 1}, sensor {channel}: invalid response - {result.message}")
                 return
 
             temperature = decode_tm5104_temperature(result.data)
+            history = self.temperature_history[device_index][channel - 1]
+            history.append(temperature)
+            del history[:-10]
             self._set_temperature_label(device_index, channel, f"{temperature:.1f} C")
+            self._set_temperature_color(device_index, channel, temperature)
             self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {temperature:.2f} C")
             self._append_log(f"Device {device_index + 1}, sensor {channel}: valid, temperature = {temperature:.3f} C")
+            if save_to_db:
+                self._store_temperature_async(device_index, channel, temperature, slave_addr)
         except Exception as exc:
             self._set_temperature_label(device_index, channel, "error")
+            self._set_temperature_color(device_index, channel, None)
             self.status_var.set(f"Device {device_index + 1}, sensor {channel}: decode error")
             self._append_log(f"Device {device_index + 1}, sensor {channel}: decode error - {exc}")
+
+    def _store_temperature_async(self, device_index: int, channel: int, temperature: float, slave_addr: int) -> None:
+        sensor = self.sensor_settings[device_index][channel - 1]
+        timestamp = datetime.now(timezone.utc)
+
+        def worker() -> None:
+            try:
+                self.database.insert_temperature(timestamp, device_index, channel, sensor, temperature, slave_addr)
+                self.db_error_reported = False
+            except Exception as exc:
+                if not self.db_error_reported:
+                    self.db_error_reported = True
+                    self.ui_queue.put(("log", f"Database write error: {exc}"))
+                    self.ui_queue.put(("status", "Database write error"))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _ensure_connected(self) -> bool:
         if not self.serial_port or not self.serial_port.is_open:
@@ -858,12 +1150,13 @@ class ElementCheckerApp(tk.Tk):
                 channel = int(channel_text)
                 self._set_temperature_label(int(device_text), channel, label)
             elif kind == "telemetry":
-                device_text, channel_text, slave_text, response_hex = value.split("|", 3)
+                device_text, channel_text, slave_text, save_text, response_hex = value.split("|", 4)
                 self._handle_temperature_response(
                     int(device_text),
                     int(channel_text),
                     bytes.fromhex(response_hex),
                     int(slave_text),
+                    save_text == "1",
                 )
             elif kind == "poll_done":
                 self.temperature_poll_running = False
@@ -885,6 +1178,9 @@ class ElementCheckerApp(tk.Tk):
         self._disconnect()
         if self.settings_window is not None and self.settings_window.winfo_exists():
             self.settings_window.destroy()
+        if self.grafana_window is not None and self.grafana_window.winfo_exists():
+            self.grafana_window.destroy()
+        self.database.close()
         self.destroy()
 
 
