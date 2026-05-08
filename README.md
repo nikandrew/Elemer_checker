@@ -6,9 +6,9 @@ The main window contains connection controls, status, and three compact TM5104 t
 
 On startup the app reads `element_checker_settings.xlsx` from the repository folder. Sensor names are taken from `Name`; sensors where `Used` is not `1` are disabled. `Tmin` and `Tmax` define the cell indicator color: blue below minimum, green in range, red above maximum.
 
-Automatic temperature polling is configured in the main window. The polling interval can be set from `100 ms` to `100 s`. During automatic polling valid temperature measurements are written to PostgreSQL/TimescaleDB table `temperature_measurements`.
+Automatic temperature polling is configured in the main window. The polling interval can be set from `100 ms` to `100 s`. During automatic polling valid temperature measurements are buffered and saved as CSV files in `measurements`.
 
-PostgreSQL DSN and Grafana URL are configured in the Settings window. Defaults can also be supplied through `ELEMER_DB_DSN` and `ELEMER_GRAFANA_URL`.
+CSV files are written when measurement is stopped or every 10 minutes of automatic operation. File names use `Elemer_<start>_<end>.csv`, where dates are formatted as `HHMM_DDMMYY`.
 
 ## Run
 

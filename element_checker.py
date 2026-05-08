@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import math
-import os
 import queue
 import struct
 import threading
 import time
 import tkinter as tk
-import webbrowser
 import zipfile
+import csv
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
 from xml.etree import ElementTree
@@ -21,17 +20,6 @@ try:
 except ImportError:  # pragma: no cover - shown in UI at runtime
     serial = None
     list_ports = None
-
-try:
-    import psycopg
-except ImportError:  # pragma: no cover - shown in UI at runtime
-    psycopg = None
-
-try:
-    import psycopg2
-except ImportError:  # pragma: no cover - shown in UI at runtime
-    psycopg2 = None
-
 
 FUNCTIONS = {
     "01 - Read Coils": 0x01,
@@ -59,8 +47,8 @@ TELEMETRY_CHANNELS = 16
 TELEMETRY_REGISTERS_PER_CHANNEL = 2
 DEVICE_COUNT = 3
 SETTINGS_FILE = "element_checker_settings.xlsx"
-DEFAULT_DB_DSN = os.environ.get("ELEMER_DB_DSN", "postgresql://postgres:postgres@localhost:5432/elemer_checker")
-DEFAULT_GRAFANA_URL = os.environ.get("ELEMER_GRAFANA_URL", "http://localhost:3000")
+MEASUREMENTS_DIR = "measurements"
+MEASUREMENT_FLUSH_INTERVAL_SECONDS = 10 * 60
 TEMP_LOW_COLOR = "#9fd7ff"
 TEMP_OK_COLOR = "#9fe6a0"
 TEMP_HIGH_COLOR = "#ff9b9b"
@@ -310,120 +298,6 @@ def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | 
     return sensors, None
 
 
-class TemperatureDatabase:
-    def __init__(self, dsn_getter) -> None:
-        self.dsn_getter = dsn_getter
-        self.connection = None
-        self.connected_dsn = ""
-        self.initialized = False
-        self.lock = threading.Lock()
-
-    def _close_locked(self) -> None:
-        if self.connection is not None:
-            try:
-                self.connection.close()
-            except Exception:
-                pass
-        self.connection = None
-        self.connected_dsn = ""
-        self.initialized = False
-
-    def close(self) -> None:
-        with self.lock:
-            self._close_locked()
-
-    def _driver(self):
-        if psycopg is not None:
-            return psycopg
-        if psycopg2 is not None:
-            return psycopg2
-        raise RuntimeError("Install PostgreSQL driver: python -m pip install psycopg[binary]")
-
-    def _connect(self):
-        dsn = self.dsn_getter().strip()
-        if not dsn:
-            raise RuntimeError("PostgreSQL DSN is empty")
-        if self.connection is not None and self.connected_dsn == dsn:
-            return self.connection
-
-        self._close_locked()
-        driver = self._driver()
-        connection = driver.connect(dsn)
-        connection.autocommit = True
-        self.connection = connection
-        self.connected_dsn = dsn
-        self.initialized = False
-        return connection
-
-    def _execute(self, sql: str, params: tuple = ()) -> None:
-        assert self.connection is not None
-        with self.connection.cursor() as cursor:
-            cursor.execute(sql, params)
-
-    def _initialize_locked(self) -> None:
-        self._connect()
-        if self.initialized:
-            return
-        self._execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
-        self._execute(
-            """
-            CREATE TABLE IF NOT EXISTS temperature_measurements (
-                time TIMESTAMPTZ NOT NULL,
-                group_id INTEGER NOT NULL,
-                sensor_sn INTEGER NOT NULL,
-                sensor_num TEXT NOT NULL,
-                sensor_name TEXT NOT NULL,
-                temperature DOUBLE PRECISION NOT NULL,
-                tmin DOUBLE PRECISION,
-                tmax DOUBLE PRECISION,
-                slave_addr INTEGER NOT NULL
-            )
-            """
-        )
-        self._execute(
-            "SELECT create_hypertable('temperature_measurements', 'time', if_not_exists => TRUE)"
-        )
-        self.initialized = True
-
-    def initialize(self) -> None:
-        with self.lock:
-            self._initialize_locked()
-
-    def insert_temperature(
-        self,
-        timestamp: datetime,
-        device_index: int,
-        channel: int,
-        sensor: SensorSettings,
-        temperature: float,
-        slave_addr: int,
-    ) -> None:
-        with self.lock:
-            self._connect()
-            if not self.initialized:
-                self._initialize_locked()
-            self._execute(
-                """
-                INSERT INTO temperature_measurements (
-                    time, group_id, sensor_sn, sensor_num, sensor_name,
-                    temperature, tmin, tmax, slave_addr
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    timestamp,
-                    device_index + 1,
-                    channel,
-                    sensor.num,
-                    sensor.name,
-                    temperature,
-                    sensor.tmin,
-                    sensor.tmax,
-                    slave_addr,
-                ),
-            )
-
-
 class ElementCheckerApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -440,9 +314,12 @@ class ElementCheckerApp(tk.Tk):
         self.temperature_buttons: list[list[tk.Button]] = []
         self.temperature_history: list[list[list[float]]] = [[[] for _channel in range(TELEMETRY_CHANNELS)] for _device in range(DEVICE_COUNT)]
         self.settings_window: tk.Toplevel | None = None
-        self.grafana_window: tk.Toplevel | None = None
-        self.db_error_reported = False
         self.sensor_settings, self.sensor_settings_warning = load_sensor_settings(Path(__file__).with_name(SETTINGS_FILE))
+        self.measurements_dir = Path(__file__).with_name(MEASUREMENTS_DIR)
+        self.measurements_dir.mkdir(exist_ok=True)
+        self.measurement_rows: list[dict[str, object]] = []
+        self.measurement_segment_start: datetime | None = None
+        self.measurement_recording = False
 
         self.port_var = tk.StringVar(value="COM22")
         self.baud_var = tk.StringVar(value="115200")
@@ -459,9 +336,6 @@ class ElementCheckerApp(tk.Tk):
         self.auto_poll_interval_var = tk.StringVar(value="1000")
         self.auto_poll_unit_var = tk.StringVar(value="ms")
         self.auto_poll_status_var = tk.StringVar(value="Auto poll stopped")
-        self.db_dsn_var = tk.StringVar(value=DEFAULT_DB_DSN)
-        self.grafana_url_var = tk.StringVar(value=DEFAULT_GRAFANA_URL)
-        self.database = TemperatureDatabase(lambda: self.db_dsn_var.get())
         self.quantity_var.trace_add("write", lambda *_args: self._refresh_expected())
 
         self._build_ui()
@@ -477,15 +351,14 @@ class ElementCheckerApp(tk.Tk):
 
         top_frame = ttk.Frame(self)
         top_frame.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="ew")
-        top_frame.columnconfigure(3, weight=1)
+        top_frame.columnconfigure(2, weight=1)
 
         self.connect_button = ttk.Button(top_frame, text="Connect port", command=self._toggle_port)
         self.connect_button.grid(row=0, column=0, padx=(0, 8), sticky="w")
         ttk.Button(top_frame, text="Settings", command=self._open_settings).grid(row=0, column=1, padx=(0, 12), sticky="w")
-        ttk.Button(top_frame, text="Grafana", command=self._open_grafana_window).grid(row=0, column=2, padx=(0, 12), sticky="w")
 
         self.status_var = tk.StringVar(value="Port disconnected")
-        ttk.Label(top_frame, textvariable=self.status_var, anchor="w").grid(row=0, column=3, sticky="ew")
+        ttk.Label(top_frame, textvariable=self.status_var, anchor="w").grid(row=0, column=2, sticky="ew")
 
         telemetry_frame = ttk.LabelFrame(self, text="TM5104 telemetry")
         telemetry_frame.grid(row=1, column=0, padx=12, pady=6, sticky="ew")
@@ -619,6 +492,75 @@ class ElementCheckerApp(tk.Tk):
                 color = TEMP_OK_COLOR
         button.configure(bg=color, activebackground=color)
 
+    def _measurement_time_label(self, value: datetime) -> str:
+        return value.strftime("%H%M_%d%m%y")
+
+    def _start_measurement_segment(self, start_time: datetime | None = None) -> None:
+        self.measurement_segment_start = start_time or datetime.now()
+        self.measurement_rows = []
+        self.measurement_recording = True
+
+    def _write_measurement_segment(self, end_time: datetime | None = None) -> Path | None:
+        if not self.measurement_rows or self.measurement_segment_start is None:
+            return None
+
+        end_time = end_time or datetime.now()
+        filename = f"Elemer_{self._measurement_time_label(self.measurement_segment_start)}_{self._measurement_time_label(end_time)}.csv"
+        path = self.measurements_dir / filename
+        suffix = 1
+        while path.exists():
+            path = self.measurements_dir / f"{filename[:-4]}_{suffix}.csv"
+            suffix += 1
+
+        fieldnames = [
+            "timestamp",
+            "group",
+            "sn",
+            "num",
+            "name",
+            "temperature",
+            "tmin",
+            "tmax",
+            "slave_addr",
+        ]
+        with path.open("w", newline="", encoding="utf-8-sig") as file:
+            writer = csv.DictWriter(file, fieldnames=fieldnames, delimiter=";")
+            writer.writeheader()
+            writer.writerows(self.measurement_rows)
+
+        self._append_log(f"Measurements saved: {path}")
+        self.measurement_rows = []
+        self.measurement_segment_start = None
+        return path
+
+    def _record_measurement(self, device_index: int, channel: int, temperature: float, slave_addr: int) -> None:
+        if not self.measurement_recording:
+            return
+
+        now = datetime.now()
+        if self.measurement_segment_start is None:
+            self._start_measurement_segment(now)
+
+        sensor = self.sensor_settings[device_index][channel - 1]
+        self.measurement_rows.append(
+            {
+                "timestamp": now.isoformat(timespec="seconds"),
+                "group": device_index + 1,
+                "sn": channel,
+                "num": sensor.num,
+                "name": sensor.name,
+                "temperature": f"{temperature:.3f}",
+                "tmin": "" if sensor.tmin is None else sensor.tmin,
+                "tmax": "" if sensor.tmax is None else sensor.tmax,
+                "slave_addr": slave_addr,
+            }
+        )
+
+        if self.measurement_segment_start and (now - self.measurement_segment_start).total_seconds() >= MEASUREMENT_FLUSH_INTERVAL_SECONDS:
+            self._write_measurement_segment(now)
+            if self.measurement_recording:
+                self._start_measurement_segment(now)
+
     def _open_settings(self) -> None:
         if self.settings_window is not None and self.settings_window.winfo_exists():
             self.settings_window.lift()
@@ -709,78 +651,12 @@ class ElementCheckerApp(tk.Tk):
             row=1, column=6, padx=8, pady=8, sticky="ew"
         )
 
-        storage_frame = ttk.LabelFrame(window, text="Storage and Grafana")
-        storage_frame.grid(row=3, column=0, padx=12, pady=6, sticky="ew")
-        storage_frame.columnconfigure(1, weight=1)
-
-        ttk.Label(storage_frame, text="PostgreSQL DSN").grid(row=0, column=0, padx=8, pady=8, sticky="w")
-        ttk.Entry(storage_frame, textvariable=self.db_dsn_var, width=64).grid(row=0, column=1, padx=8, pady=8, sticky="ew")
-        ttk.Button(storage_frame, text="Test DB", command=self._test_database).grid(row=0, column=2, padx=8, pady=8, sticky="ew")
-
-        ttk.Label(storage_frame, text="Grafana URL").grid(row=1, column=0, padx=8, pady=8, sticky="w")
-        ttk.Entry(storage_frame, textvariable=self.grafana_url_var, width=64).grid(row=1, column=1, padx=8, pady=8, sticky="ew")
-        ttk.Button(storage_frame, text="Open", command=self._open_grafana_window).grid(row=1, column=2, padx=8, pady=8, sticky="ew")
-
-        ttk.Button(window, text="Close", command=self._close_settings).grid(row=4, column=0, padx=12, pady=(6, 12), sticky="e")
+        ttk.Button(window, text="Close", command=self._close_settings).grid(row=3, column=0, padx=12, pady=(6, 12), sticky="e")
 
     def _close_settings(self) -> None:
         if self.settings_window is not None:
             self.settings_window.destroy()
             self.settings_window = None
-
-    def _test_database(self) -> None:
-        def worker() -> None:
-            try:
-                self.database.initialize()
-                self.db_error_reported = False
-                self.ui_queue.put(("status", "Database connected"))
-                self.ui_queue.put(("log", "Database connected and TimescaleDB table is ready"))
-            except Exception as exc:
-                self.ui_queue.put(("status", "Database connection error"))
-                self.ui_queue.put(("log", f"Database connection error: {exc}"))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _open_grafana_window(self) -> None:
-        if self.grafana_window is not None and self.grafana_window.winfo_exists():
-            self.grafana_window.lift()
-            self.grafana_window.focus_set()
-            return
-
-        window = tk.Toplevel(self)
-        window.title("Grafana")
-        window.transient(self)
-        window.geometry("640x220")
-        window.protocol("WM_DELETE_WINDOW", self._close_grafana_window)
-        self.grafana_window = window
-        window.columnconfigure(0, weight=1)
-
-        ttk.Label(window, text="Grafana URL").grid(row=0, column=0, padx=12, pady=(12, 4), sticky="w")
-        ttk.Entry(window, textvariable=self.grafana_url_var).grid(row=1, column=0, padx=12, pady=4, sticky="ew")
-        ttk.Button(window, text="Open Grafana", command=self._open_grafana_in_browser).grid(
-            row=1, column=1, padx=12, pady=4, sticky="ew"
-        )
-        ttk.Label(
-            window,
-            text="Use PostgreSQL/TimescaleDB table temperature_measurements as the Grafana data source.",
-            anchor="w",
-        ).grid(row=2, column=0, columnspan=2, padx=12, pady=8, sticky="ew")
-        ttk.Label(
-            window,
-            text="Recommended time column: time; value column: temperature; dimensions: group_id, sensor_sn, sensor_name.",
-            anchor="w",
-        ).grid(row=3, column=0, columnspan=2, padx=12, pady=4, sticky="ew")
-
-        self._open_grafana_in_browser()
-
-    def _open_grafana_in_browser(self) -> None:
-        url = self.grafana_url_var.get().strip() or DEFAULT_GRAFANA_URL
-        webbrowser.open(url)
-
-    def _close_grafana_window(self) -> None:
-        if self.grafana_window is not None:
-            self.grafana_window.destroy()
-            self.grafana_window = None
 
 
     def _available_ports(self) -> tuple[str, ...]:
@@ -928,9 +804,9 @@ class ElementCheckerApp(tk.Tk):
                             request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
                             self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
                             response = self._transact(request, 9)
-                            save_to_db = 1 if auto else 0
+                            save_to_csv = 1 if auto else 0
                             self.ui_queue.put(
-                                ("telemetry", f"{device_index}|{channel}|{settings.slave_addr}|{save_to_db}|{response.hex()}")
+                                ("telemetry", f"{device_index}|{channel}|{settings.slave_addr}|{save_to_csv}|{response.hex()}")
                             )
                             time.sleep(max(0.02, settings.scan_rate_ms / 1000 / 10))
                         except Exception as exc:
@@ -996,7 +872,7 @@ class ElementCheckerApp(tk.Tk):
         channel: int,
         response: bytes,
         slave_addr: int,
-        save_to_db: bool,
+        save_to_csv: bool,
     ) -> None:
         try:
             result = validate_read_response(response, slave_addr, 0x03, 4)
@@ -1015,29 +891,13 @@ class ElementCheckerApp(tk.Tk):
             self._set_temperature_color(device_index, channel, temperature)
             self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {temperature:.2f} C")
             self._append_log(f"Device {device_index + 1}, sensor {channel}: valid, temperature = {temperature:.3f} C")
-            if save_to_db:
-                self._store_temperature_async(device_index, channel, temperature, slave_addr)
+            if save_to_csv:
+                self._record_measurement(device_index, channel, temperature, slave_addr)
         except Exception as exc:
             self._set_temperature_label(device_index, channel, "error")
             self._set_temperature_color(device_index, channel, None)
             self.status_var.set(f"Device {device_index + 1}, sensor {channel}: decode error")
             self._append_log(f"Device {device_index + 1}, sensor {channel}: decode error - {exc}")
-
-    def _store_temperature_async(self, device_index: int, channel: int, temperature: float, slave_addr: int) -> None:
-        sensor = self.sensor_settings[device_index][channel - 1]
-        timestamp = datetime.now(timezone.utc)
-
-        def worker() -> None:
-            try:
-                self.database.insert_temperature(timestamp, device_index, channel, sensor, temperature, slave_addr)
-                self.db_error_reported = False
-            except Exception as exc:
-                if not self.db_error_reported:
-                    self.db_error_reported = True
-                    self.ui_queue.put(("log", f"Database write error: {exc}"))
-                    self.ui_queue.put(("status", "Database write error"))
-
-        threading.Thread(target=worker, daemon=True).start()
 
     def _ensure_connected(self) -> bool:
         if not self.serial_port or not self.serial_port.is_open:
@@ -1091,6 +951,7 @@ class ElementCheckerApp(tk.Tk):
             return
 
         self.auto_poll_var.set(True)
+        self._start_measurement_segment()
         self.auto_start_button.state(["disabled"])
         self.auto_stop_button.state(["!disabled"])
         self.auto_poll_status_var.set("Auto poll running")
@@ -1099,6 +960,10 @@ class ElementCheckerApp(tk.Tk):
     def _stop_auto_poll(self) -> None:
         self.auto_poll_var.set(False)
         self._cancel_auto_poll()
+        was_recording = self.measurement_recording
+        self.measurement_recording = False
+        if was_recording:
+            self._write_measurement_segment()
         if hasattr(self, "auto_start_button"):
             self.auto_start_button.state(["!disabled"])
         if hasattr(self, "auto_stop_button"):
@@ -1178,9 +1043,6 @@ class ElementCheckerApp(tk.Tk):
         self._disconnect()
         if self.settings_window is not None and self.settings_window.winfo_exists():
             self.settings_window.destroy()
-        if self.grafana_window is not None and self.grafana_window.winfo_exists():
-            self.grafana_window.destroy()
-        self.database.close()
         self.destroy()
 
 
