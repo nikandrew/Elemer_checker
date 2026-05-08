@@ -318,6 +318,7 @@ class ElementCheckerApp(tk.Tk):
         self.measurements_dir = Path(__file__).with_name(MEASUREMENTS_DIR)
         self.measurements_dir.mkdir(exist_ok=True)
         self.measurement_rows: list[dict[str, object]] = []
+        self.current_measurement_row: dict[str, object] | None = None
         self.measurement_segment_start: datetime | None = None
         self.measurement_recording = False
 
@@ -498,6 +499,7 @@ class ElementCheckerApp(tk.Tk):
     def _start_measurement_segment(self, start_time: datetime | None = None) -> None:
         self.measurement_segment_start = start_time or datetime.now()
         self.measurement_rows = []
+        self.current_measurement_row = None
         self.measurement_recording = True
 
     def _write_measurement_segment(self, end_time: datetime | None = None) -> Path | None:
@@ -512,16 +514,10 @@ class ElementCheckerApp(tk.Tk):
             path = self.measurements_dir / f"{filename[:-4]}_{suffix}.csv"
             suffix += 1
 
-        fieldnames = [
-            "timestamp",
-            "group",
-            "sn",
-            "num",
-            "name",
-            "temperature",
-            "tmin",
-            "tmax",
-            "slave_addr",
+        fieldnames = ["timestamp"] + [
+            self.sensor_settings[device_index][channel].num
+            for device_index in range(DEVICE_COUNT)
+            for channel in range(TELEMETRY_CHANNELS)
         ]
         with path.open("w", newline="", encoding="utf-8-sig") as file:
             writer = csv.DictWriter(file, fieldnames=fieldnames, delimiter=";")
@@ -533,7 +529,7 @@ class ElementCheckerApp(tk.Tk):
         self.measurement_segment_start = None
         return path
 
-    def _record_measurement(self, device_index: int, channel: int, temperature: float, slave_addr: int) -> None:
+    def _record_measurement(self, device_index: int, channel: int, temperature: float) -> None:
         if not self.measurement_recording:
             return
 
@@ -542,19 +538,17 @@ class ElementCheckerApp(tk.Tk):
             self._start_measurement_segment(now)
 
         sensor = self.sensor_settings[device_index][channel - 1]
-        self.measurement_rows.append(
-            {
-                "timestamp": now.isoformat(timespec="seconds"),
-                "group": device_index + 1,
-                "sn": channel,
-                "num": sensor.num,
-                "name": sensor.name,
-                "temperature": f"{temperature:.3f}",
-                "tmin": "" if sensor.tmin is None else sensor.tmin,
-                "tmax": "" if sensor.tmax is None else sensor.tmax,
-                "slave_addr": slave_addr,
-            }
-        )
+        if self.current_measurement_row is None:
+            self.current_measurement_row = {"timestamp": now.isoformat(timespec="seconds")}
+        self.current_measurement_row[sensor.num] = f"{temperature:.3f}"
+
+    def _finish_measurement_row(self) -> None:
+        if not self.current_measurement_row:
+            return
+
+        self.measurement_rows.append(self.current_measurement_row)
+        self.current_measurement_row = None
+        now = datetime.now()
 
         if self.measurement_segment_start and (now - self.measurement_segment_start).total_seconds() >= MEASUREMENT_FLUSH_INTERVAL_SECONDS:
             self._write_measurement_segment(now)
@@ -892,7 +886,7 @@ class ElementCheckerApp(tk.Tk):
             self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {temperature:.2f} C")
             self._append_log(f"Device {device_index + 1}, sensor {channel}: valid, temperature = {temperature:.3f} C")
             if save_to_csv:
-                self._record_measurement(device_index, channel, temperature, slave_addr)
+                self._record_measurement(device_index, channel, temperature)
         except Exception as exc:
             self._set_temperature_label(device_index, channel, "error")
             self._set_temperature_color(device_index, channel, None)
@@ -963,6 +957,7 @@ class ElementCheckerApp(tk.Tk):
         was_recording = self.measurement_recording
         self.measurement_recording = False
         if was_recording:
+            self._finish_measurement_row()
             self._write_measurement_segment()
         if hasattr(self, "auto_start_button"):
             self.auto_start_button.state(["!disabled"])
@@ -1025,6 +1020,8 @@ class ElementCheckerApp(tk.Tk):
                 )
             elif kind == "poll_done":
                 self.temperature_poll_running = False
+                if value == "auto":
+                    self._finish_measurement_row()
                 if value == "auto" and self.auto_poll_var.get():
                     self.auto_poll_status_var.set("Auto poll running")
                     self._schedule_auto_poll()

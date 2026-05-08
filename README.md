@@ -8,7 +8,7 @@ On startup the app reads `element_checker_settings.xlsx` from the repository fol
 
 Automatic temperature polling is configured in the main window. The polling interval can be set from `100 ms` to `100 s`. During automatic polling valid temperature measurements are buffered and saved as CSV files in `measurements`.
 
-CSV files are written when measurement is stopped or every 10 minutes of automatic operation. File names use `Elemer_<start>_<end>.csv`, where dates are formatted as `HHMM_DDMMYY`.
+CSV files are written when measurement is stopped or every 10 minutes of automatic operation. File names use `Elemer_<start>_<end>.csv`, where dates are formatted as `HHMM_DDMMYY`. Each CSV row contains one timestamp and columns for all 48 sensors.
 
 ## Run
 
