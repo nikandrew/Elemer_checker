@@ -380,6 +380,24 @@ def save_channel_settings(path: Path, sensors: list[list[SensorSettings]]) -> No
 
 
 class ElementCheckerApp(tk.Tk):
+    def _default_plotly_axis_profile(self) -> dict[str, object]:
+        return {
+            "y_manual": False,
+            "y_min": "",
+            "y_max": "",
+            "y_step": "",
+            "time_mode": "Автоматический масштаб",
+            "time_min": "",
+            "time_max": "",
+            "points": "100",
+            "time_step": "5",
+            "background": "white",
+            "grid_color": "#eeeeee",
+            "grid_type": "Сплошная",
+            "grid_width": "1",
+            "grid_visibility": "100",
+        }
+
     def __init__(self) -> None:
         super().__init__()
         self.title("Element TM5104 Modbus Checker")
@@ -421,6 +439,11 @@ class ElementCheckerApp(tk.Tk):
         self.plotly_http_server = None
         self.plotly_http_thread: threading.Thread | None = None
         self.plotly_http_port: int | None = None
+        self.plotly_axis_profiles: dict[str, dict[str, object]] = {
+            "main": self._default_plotly_axis_profile(),
+            "small1": self._default_plotly_axis_profile(),
+            "small2": self._default_plotly_axis_profile(),
+        }
         self.graph_y_min_var = tk.StringVar(value="")
         self.graph_y_max_var = tk.StringVar(value="")
         self.graph_y_step_var = tk.StringVar(value="")
@@ -1360,6 +1383,30 @@ class ElementCheckerApp(tk.Tk):
         except ValueError:
             return None
 
+    def _profile_float(self, profile: dict[str, object], key: str) -> float | None:
+        value = str(profile.get(key, "")).strip().replace(",", ".")
+        if not value:
+            return None
+        try:
+            return float(value)
+        except ValueError:
+            return None
+
+    def _profile_int(self, profile: dict[str, object], key: str, default: int, minimum: int, maximum: int) -> int:
+        try:
+            value = int(str(profile.get(key, default)).strip())
+        except ValueError:
+            value = default
+        return max(minimum, min(maximum, value))
+
+    def _profile_time_mode(self, profile: dict[str, object]) -> str:
+        mode = str(profile.get("time_mode", "Автоматический масштаб"))
+        if mode in {"points", "По истории точек"}:
+            return "points"
+        if mode in {"interval", "Заданный интервал"}:
+            return "interval"
+        return "auto"
+
     def _parse_graph_time(self, value: str, reference: datetime) -> datetime | None:
         value = value.strip()
         if not value:
@@ -1454,6 +1501,49 @@ class ElementCheckerApp(tk.Tk):
             minutes = 30.0
         end = max(timestamps) if timestamps else now
         start = end.timestamp() - minutes * 60
+        return self._utc_from_timestamp(start), end
+
+    def _profile_temperature_bounds(self, series_points: list[list[tuple[datetime, float]]], profile: dict[str, object]) -> tuple[float, float]:
+        values = [temperature for series in series_points for _timestamp, temperature in series]
+        use_manual = bool(profile.get("y_manual", False))
+        manual_min = self._profile_float(profile, "y_min") if use_manual else None
+        manual_max = self._profile_float(profile, "y_max") if use_manual else None
+        y_min = manual_min if manual_min is not None else (min(values) if values else 0.0)
+        y_max = manual_max if manual_max is not None else (max(values) if values else 1.0)
+        if y_min == y_max:
+            y_min -= 1.0
+            y_max += 1.0
+        elif not use_manual:
+            padding = max(0.5, (y_max - y_min) * 0.08)
+            y_min -= padding
+            y_max += padding
+        return y_min, y_max
+
+    def _profile_time_bounds(self, series_points: list[list[tuple[datetime, float]]], profile: dict[str, object]) -> tuple[datetime, datetime]:
+        timestamps = [timestamp for series in series_points for timestamp, _temperature in series]
+        now = self._utc_now()
+        mode = self._profile_time_mode(profile)
+        if mode in {"auto", "points"} and timestamps:
+            start = min(timestamps)
+            end = max(timestamps)
+            if start == end:
+                start -= timedelta(seconds=30)
+                end += timedelta(seconds=30)
+            else:
+                padding = max(1.0, (end - start).total_seconds() * 0.05)
+                start -= timedelta(seconds=padding)
+                end += timedelta(seconds=padding)
+            return start, end
+        if mode == "interval":
+            reference = max(timestamps) if timestamps else now
+            start = self._parse_graph_time(str(profile.get("time_min", "")), reference)
+            end = self._parse_graph_time(str(profile.get("time_max", "")), reference)
+            if start and end:
+                if end <= start:
+                    end += timedelta(days=1)
+                return start, end
+        end = max(timestamps) if timestamps else now
+        start = end.timestamp() - 30 * 60
         return self._utc_from_timestamp(start), end
 
     def _graph_y_bounds(self, series_values: list[list[float]]) -> tuple[float, float]:
@@ -1658,6 +1748,16 @@ class ElementCheckerApp(tk.Tk):
             return points[-self._graph_points_limit() :]
         return points[-5000:]
 
+    def _series_points_for_profile(self, option: str, profile: dict[str, object]) -> list[tuple[datetime, float]]:
+        sensor_ref = self.graph_option_map.get(option)
+        if sensor_ref is None:
+            return []
+        device_index, channel_index = sensor_ref
+        points = self.plot_history[device_index][channel_index]
+        if self._profile_time_mode(profile) == "points":
+            return points[-self._profile_int(profile, "points", 100, 2, 5000) :]
+        return points[-5000:]
+
     def _draw_graphs(self) -> None:
         if self.graphs_window is None or not self.graphs_window.winfo_exists():
             return
@@ -1787,6 +1887,122 @@ class ElementCheckerApp(tk.Tk):
             return
         self.plotly_data_path.write_text(self._plotly_figure_json(), encoding="utf-8")
 
+    def _open_graph_axis_settings_window(self, profile_key: str = "main") -> None:
+        titles = {"main": "Основной график", "small1": "Дополнительный график 1", "small2": "Дополнительный график 2"}
+        profile = self.plotly_axis_profiles.setdefault(profile_key, self._default_plotly_axis_profile())
+        window = tk.Toplevel(self.plotly_graphs_window or self.graphs_window or self)
+        window.title(f"Настройки осей графиков: {titles.get(profile_key, profile_key)}")
+        window.resizable(False, False)
+        window.columnconfigure(0, weight=1)
+
+        y_manual_var = tk.BooleanVar(value=bool(profile.get("y_manual", False)))
+        y_min_var = tk.StringVar(value=str(profile.get("y_min", "")))
+        y_max_var = tk.StringVar(value=str(profile.get("y_max", "")))
+        y_step_var = tk.StringVar(value=str(profile.get("y_step", "")))
+        time_mode_var = tk.StringVar(value=str(profile.get("time_mode", "Автоматический масштаб")))
+        time_min_var = tk.StringVar(value=str(profile.get("time_min", "")))
+        time_max_var = tk.StringVar(value=str(profile.get("time_max", "")))
+        points_var = tk.StringVar(value=str(profile.get("points", "100")))
+        time_step_var = tk.StringVar(value=str(profile.get("time_step", "5")))
+        bg_var = tk.StringVar(value=str(profile.get("background", "white")))
+        grid_color_var = tk.StringVar(value=str(profile.get("grid_color", "#eeeeee")))
+        grid_type_var = tk.StringVar(value=str(profile.get("grid_type", "Сплошная")))
+        grid_width_var = tk.StringVar(value=str(profile.get("grid_width", "1")))
+        grid_visibility_var = tk.StringVar(value=str(profile.get("grid_visibility", "100")))
+
+        y_frame = ttk.LabelFrame(window, text="Ось Y")
+        y_frame.grid(row=0, column=0, padx=10, pady=(10, 6), sticky="ew")
+        y_frame.columnconfigure(1, weight=1)
+        ttk.Checkbutton(y_frame, text="Использовать заданные настройки Y", variable=y_manual_var).grid(
+            row=0, column=0, columnspan=2, padx=8, pady=(6, 4), sticky="w"
+        )
+        for row, (label, variable) in enumerate(
+            (("Ymin, °C", y_min_var), ("Ymax, °C", y_max_var), ("Дискретность Y, °C", y_step_var)), start=1
+        ):
+            ttk.Label(y_frame, text=label).grid(row=row, column=0, padx=8, pady=4, sticky="w")
+            ttk.Entry(y_frame, textvariable=variable, width=22).grid(row=row, column=1, padx=8, pady=4, sticky="ew")
+
+        x_frame = ttk.LabelFrame(window, text="Ось X: UTC")
+        x_frame.grid(row=1, column=0, padx=10, pady=6, sticky="ew")
+        x_frame.columnconfigure(1, weight=1)
+        ttk.Label(x_frame, text="Режим шкалы T").grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        ttk.Combobox(
+            x_frame,
+            textvariable=time_mode_var,
+            values=("Автоматический масштаб", "По истории точек", "Заданный интервал"),
+            state="readonly",
+        ).grid(row=0, column=1, padx=8, pady=4, sticky="ew")
+        for row, (label, variable) in enumerate(
+            (
+                ("Tmin UTC (HH:MM:SS)", time_min_var),
+                ("Tmax UTC (HH:MM:SS)", time_max_var),
+                ("Точек истории T", points_var),
+                ("Дискретность T, мин", time_step_var),
+            ),
+            start=1,
+        ):
+            ttk.Label(x_frame, text=label).grid(row=row, column=0, padx=8, pady=4, sticky="w")
+            ttk.Entry(x_frame, textvariable=variable, width=22).grid(row=row, column=1, padx=8, pady=4, sticky="ew")
+
+        graph_frame = ttk.LabelFrame(window, text="График")
+        graph_frame.grid(row=2, column=0, padx=10, pady=6, sticky="ew")
+        graph_frame.columnconfigure(1, weight=1)
+        graph_frame.columnconfigure(3, weight=1)
+        ttk.Label(graph_frame, text="Цвет фона").grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        ttk.Entry(graph_frame, textvariable=bg_var, width=14).grid(row=0, column=1, padx=8, pady=4, sticky="ew")
+        bg_swatch = tk.Label(graph_frame, width=4, relief="solid", bd=1)
+        bg_swatch.grid(row=0, column=2, padx=8, pady=4, sticky="ns")
+        ttk.Label(graph_frame, text="Цвет сетки").grid(row=1, column=0, padx=8, pady=4, sticky="w")
+        ttk.Entry(graph_frame, textvariable=grid_color_var, width=14).grid(row=1, column=1, padx=8, pady=4, sticky="ew")
+        grid_swatch = tk.Label(graph_frame, width=4, relief="solid", bd=1)
+        grid_swatch.grid(row=1, column=2, padx=8, pady=4, sticky="ns")
+        ttk.Label(graph_frame, text="Тип сетки").grid(row=2, column=0, padx=8, pady=4, sticky="w")
+        ttk.Combobox(
+            graph_frame,
+            textvariable=grid_type_var,
+            values=("Сплошная", "Пунктирная", "Точечная"),
+            state="readonly",
+        ).grid(row=2, column=1, columnspan=2, padx=8, pady=4, sticky="ew")
+        ttk.Label(graph_frame, text="Толщина").grid(row=3, column=0, padx=8, pady=4, sticky="w")
+        ttk.Entry(graph_frame, textvariable=grid_width_var, width=10).grid(row=3, column=1, padx=8, pady=4, sticky="ew")
+        ttk.Label(graph_frame, text="Видимость, %").grid(row=3, column=2, padx=8, pady=4, sticky="w")
+        ttk.Entry(graph_frame, textvariable=grid_visibility_var, width=10).grid(row=3, column=3, padx=8, pady=4, sticky="ew")
+
+        def update_swatch(variable: tk.StringVar, swatch: tk.Label, fallback: str) -> None:
+            try:
+                swatch.configure(bg=variable.get().strip() or fallback)
+            except tk.TclError:
+                swatch.configure(bg=TEMP_DISABLED_COLOR)
+
+        bg_var.trace_add("write", lambda *_args: update_swatch(bg_var, bg_swatch, "white"))
+        grid_color_var.trace_add("write", lambda *_args: update_swatch(grid_color_var, grid_swatch, "#eeeeee"))
+        update_swatch(bg_var, bg_swatch, "white")
+        update_swatch(grid_color_var, grid_swatch, "#eeeeee")
+
+        def apply_settings() -> None:
+            profile.update(
+                {
+                    "y_manual": y_manual_var.get(),
+                    "y_min": y_min_var.get(),
+                    "y_max": y_max_var.get(),
+                    "y_step": y_step_var.get(),
+                    "time_mode": time_mode_var.get(),
+                    "time_min": time_min_var.get(),
+                    "time_max": time_max_var.get(),
+                    "points": points_var.get(),
+                    "time_step": time_step_var.get(),
+                    "background": bg_var.get(),
+                    "grid_color": grid_color_var.get(),
+                    "grid_type": grid_type_var.get(),
+                    "grid_width": grid_width_var.get(),
+                    "grid_visibility": grid_visibility_var.get(),
+                }
+            )
+            self._apply_graph_settings()
+            window.destroy()
+
+        ttk.Button(window, text="Применить", command=apply_settings).grid(row=3, column=0, padx=10, pady=(6, 10), sticky="ew")
+
     def _plotly_graph_window_open(self) -> bool:
         return self.plotly_graphs_window is not None and self.plotly_graphs_window.winfo_exists()
 
@@ -1833,12 +2049,20 @@ class ElementCheckerApp(tk.Tk):
             combo.grid(row=index, column=1, padx=8, pady=5, sticky="ew")
             combo.bind("<<ComboboxSelected>>", lambda _event: self._apply_plotly_control_selection())
 
-        buttons = ttk.Frame(window)
+        buttons = ttk.LabelFrame(window, text="Настройки осей графиков")
         buttons.grid(row=1, column=0, padx=10, pady=6, sticky="ew")
-        buttons.columnconfigure(0, weight=1)
-        buttons.columnconfigure(1, weight=1)
-        ttk.Button(buttons, text="Настройки осей", command=self._open_graph_axis_settings_window).grid(row=0, column=0, padx=(0, 4), sticky="ew")
-        ttk.Button(buttons, text="Обновить графики", command=self._apply_graph_settings).grid(row=0, column=1, padx=(4, 0), sticky="ew")
+        for column in range(4):
+            buttons.columnconfigure(column, weight=1)
+        ttk.Button(buttons, text="Основной", command=lambda: self._open_graph_axis_settings_window("main")).grid(
+            row=0, column=0, padx=4, pady=6, sticky="ew"
+        )
+        ttk.Button(buttons, text="Доп. 1", command=lambda: self._open_graph_axis_settings_window("small1")).grid(
+            row=0, column=1, padx=4, pady=6, sticky="ew"
+        )
+        ttk.Button(buttons, text="Доп. 2", command=lambda: self._open_graph_axis_settings_window("small2")).grid(
+            row=0, column=2, padx=4, pady=6, sticky="ew"
+        )
+        ttk.Button(buttons, text="Обновить", command=self._apply_graph_settings).grid(row=0, column=3, padx=4, pady=6, sticky="ew")
 
         checks_frame = ttk.LabelFrame(window, text="Каналы основного графика")
         checks_frame.grid(row=2, column=0, padx=10, pady=(6, 10), sticky="nsew")
@@ -1932,12 +2156,12 @@ class ElementCheckerApp(tk.Tk):
     def _filter_plotly_series(
         self,
         series: list[tuple[str, list[tuple[datetime, float]]]],
-        auto_axis: bool,
+        profile: dict[str, object],
     ) -> tuple[list[tuple[str, list[tuple[datetime, float]]]], datetime | None, datetime | None, float | None, float | None]:
         non_empty = [(label, points) for label, points in series if points]
         if not non_empty:
             return [], None, None, None, None
-        t_min, t_max = self._graph_time_bounds([points for _label, points in non_empty], auto_axis)
+        t_min, t_max = self._profile_time_bounds([points for _label, points in non_empty], profile)
         filtered = [
             (label, [(timestamp, temperature) for timestamp, temperature in points if t_min <= timestamp <= t_max])
             for label, points in non_empty
@@ -1945,38 +2169,74 @@ class ElementCheckerApp(tk.Tk):
         filtered = [(label, points) for label, points in filtered if points]
         if not filtered:
             return [], t_min, t_max, None, None
-        y_min, y_max = self._graph_temperature_bounds([points for _label, points in filtered], auto_axis)
+        y_min, y_max = self._profile_temperature_bounds([points for _label, points in filtered], profile)
         return filtered, t_min, t_max, y_min, y_max
 
-    def _plotly_axis_options(self, t_min: datetime | None, t_max: datetime | None, y_min: float | None, y_max: float | None, auto_axis: bool) -> dict[str, object]:
-        x_axis: dict[str, object] = {"title": "UTC", "showgrid": True}
-        y_axis: dict[str, object] = {"title": "Температура, °C", "showgrid": True}
-        grid_color = self._plotly_color(self.graph_grid_color_var.get(), "#eeeeee")
-        x_axis["gridcolor"] = grid_color
-        y_axis["gridcolor"] = grid_color
-        try:
-            grid_width = max(1, int(self.graph_grid_width_var.get()))
-        except ValueError:
-            grid_width = 1
-        x_axis["gridwidth"] = grid_width
-        y_axis["gridwidth"] = grid_width
-        try:
-            time_step_min = float(self.graph_time_step_min_var.get().replace(",", "."))
-        except ValueError:
-            time_step_min = 0.0
+    def _plotly_axis_options(self, t_min: datetime | None, t_max: datetime | None, y_min: float | None, y_max: float | None, profile: dict[str, object]) -> dict[str, object]:
+        x_axis: dict[str, object] = {"title": "UTC", "showgrid": False}
+        y_axis: dict[str, object] = {"title": "Температура, °C", "showgrid": False}
+        time_step_min = self._profile_float(profile, "time_step") or 0.0
         if time_step_min > 0:
             x_axis["dtick"] = time_step_min * 60 * 1000
-        try:
-            y_step = float(self.graph_y_step_var.get().replace(",", "."))
-        except ValueError:
-            y_step = 0.0
+        y_step = self._profile_float(profile, "y_step") or 0.0
         if y_step > 0:
             y_axis["dtick"] = y_step
         if t_min is not None and t_max is not None:
             x_axis["range"] = [t_min, t_max]
-        if (auto_axis or self.graph_y_manual_var.get()) and y_min is not None and y_max is not None:
+        if y_min is not None and y_max is not None:
             y_axis["range"] = [y_min, y_max]
         return {"xaxis": x_axis, "yaxis": y_axis}
+
+    def _add_plotly_grid(self, fig, row: int, profile: dict[str, object], t_min: datetime | None, t_max: datetime | None, y_min: float | None, y_max: float | None) -> None:
+        if t_min is None or t_max is None or y_min is None or y_max is None:
+            return
+        try:
+            visibility = max(0.0, min(1.0, int(str(profile.get("grid_visibility", "100"))) / 100))
+        except ValueError:
+            visibility = 1.0
+        if visibility <= 0:
+            return
+        color = self._plotly_color(str(profile.get("grid_color", "#eeeeee")), "#eeeeee")
+        width = self._profile_int(profile, "grid_width", 1, 1, 20)
+        dash = self._plotly_dash(str(profile.get("grid_type", "Сплошная")))
+        x_axis = f"x{row if row > 1 else ''}"
+        y_axis = f"y{row if row > 1 else ''}"
+        time_step_min = self._profile_float(profile, "time_step") or 0.0
+        if time_step_min > 0:
+            step_seconds = time_step_min * 60
+            tick = math.ceil(t_min.timestamp() / step_seconds) * step_seconds
+            while tick <= t_max.timestamp():
+                x_value = self._utc_from_timestamp(tick)
+                fig.add_shape(
+                    type="line",
+                    x0=x_value,
+                    x1=x_value,
+                    y0=y_min,
+                    y1=y_max,
+                    xref=x_axis,
+                    yref=y_axis,
+                    line={"color": color, "width": width, "dash": dash},
+                    opacity=visibility,
+                    layer="below",
+                )
+                tick += step_seconds
+        y_step = self._profile_float(profile, "y_step") or 0.0
+        if y_step > 0:
+            tick = math.ceil(y_min / y_step) * y_step
+            while tick <= y_max:
+                fig.add_shape(
+                    type="line",
+                    x0=t_min,
+                    x1=t_max,
+                    y0=tick,
+                    y1=tick,
+                    xref=x_axis,
+                    yref=y_axis,
+                    line={"color": color, "width": width, "dash": dash},
+                    opacity=visibility,
+                    layer="below",
+                )
+                tick += y_step
 
     def _plotly_figure_json(self) -> str:
         options = self._graph_options()
@@ -1995,41 +2255,41 @@ class ElementCheckerApp(tk.Tk):
             row_heights=[0.5, 0.25, 0.25],
             subplot_titles=("Основной общий график", "Дополнительный график 1", "Дополнительный график 2"),
         )
+        fig.update_annotations(x=0, xanchor="left", align="left")
         colors = ("#0b67d1", "#c23b22", "#2f8f2f", "#8a2be2", "#d18f00", "#008b8b", "#444444", "#e377c2")
 
-        big_series = [(option, self._series_points(option)) for option in options if option in self.plotly_big_selected]
-        big_series, t_min, t_max, y_min, y_max = self._filter_plotly_series(big_series, self.big_graph_auto_axis_var.get())
+        main_profile = self.plotly_axis_profiles.setdefault("main", self._default_plotly_axis_profile())
+        small1_profile = self.plotly_axis_profiles.setdefault("small1", self._default_plotly_axis_profile())
+        small2_profile = self.plotly_axis_profiles.setdefault("small2", self._default_plotly_axis_profile())
+
+        big_series = [(option, self._series_points_for_profile(option, main_profile)) for option in options if option in self.plotly_big_selected]
+        big_series, t_min, t_max, y_min, y_max = self._filter_plotly_series(big_series, main_profile)
         for series_index, (label, points) in enumerate(big_series):
             fig.add_trace(self._plotly_trace(label, points, colors[series_index % len(colors)]), row=1, col=1)
-        axes = self._plotly_axis_options(t_min, t_max, y_min, y_max, self.big_graph_auto_axis_var.get())
+        axes = self._plotly_axis_options(t_min, t_max, y_min, y_max, main_profile)
         fig.update_xaxes(**axes["xaxis"], row=1, col=1)
         fig.update_yaxes(**axes["yaxis"], row=1, col=1)
+        self._add_plotly_grid(fig, 1, main_profile, t_min, t_max, y_min, y_max)
 
         for row, option in enumerate(self.plotly_small_selected[:2], start=2):
-            series = [(option, self._series_points(option))] if option else []
-            series, t_min, t_max, y_min, y_max = self._filter_plotly_series(series, False)
+            profile = small1_profile if row == 2 else small2_profile
+            series = [(option, self._series_points_for_profile(option, profile))] if option else []
+            series, t_min, t_max, y_min, y_max = self._filter_plotly_series(series, profile)
             for series_index, (label, points) in enumerate(series):
                 fig.add_trace(self._plotly_trace(label, points, colors[series_index % len(colors)]), row=row, col=1)
-            axes = self._plotly_axis_options(t_min, t_max, y_min, y_max, False)
+            axes = self._plotly_axis_options(t_min, t_max, y_min, y_max, profile)
             fig.update_xaxes(**axes["xaxis"], row=row, col=1)
             fig.update_yaxes(**axes["yaxis"], row=row, col=1)
-
-        try:
-            grid_visibility = max(0.0, min(1.0, int(self.graph_grid_visibility_var.get()) / 100))
-        except ValueError:
-            grid_visibility = 1.0
+            self._add_plotly_grid(fig, row, profile, t_min, t_max, y_min, y_max)
         fig.update_layout(
             title="Графики температур",
             height=900,
-            paper_bgcolor=self._plotly_color(self.graph_bg_var.get(), "white"),
-            plot_bgcolor=self._plotly_color(self.graph_bg_var.get(), "white"),
+            paper_bgcolor=self._plotly_color(str(main_profile.get("background", "white")), "white"),
+            plot_bgcolor=self._plotly_color(str(main_profile.get("background", "white")), "white"),
             legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
             margin={"l": 70, "r": 30, "t": 90, "b": 50},
             uirevision="elemer-graphs",
         )
-        if grid_visibility <= 0:
-            fig.update_xaxes(showgrid=False)
-            fig.update_yaxes(showgrid=False)
         return json.dumps(fig.to_plotly_json(), ensure_ascii=False, default=str)
 
     def _ensure_plotly_http_server(self) -> str | None:
