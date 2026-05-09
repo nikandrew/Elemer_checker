@@ -402,6 +402,7 @@ class ElementCheckerApp(tk.Tk):
         self.graph_y_max_var = tk.StringVar(value="")
         self.graph_y_step_var = tk.StringVar(value="")
         self.graph_points_var = tk.StringVar(value="100")
+        self.graph_time_scale_mode_var = tk.StringVar(value="Последние точки")
         self.graph_bg_var = tk.StringVar(value="white")
         self.graph_x_min_var = tk.StringVar(value="")
         self.graph_x_max_var = tk.StringVar(value="")
@@ -672,6 +673,8 @@ class ElementCheckerApp(tk.Tk):
         window.title("Settings")
         window.transient(self)
         window.resizable(False, False)
+        window.columnconfigure(1, weight=1)
+
         window.protocol("WM_DELETE_WINDOW", self._close_settings)
         self.settings_window = window
 
@@ -1304,6 +1307,10 @@ class ElementCheckerApp(tk.Tk):
         except ValueError:
             return 100
 
+    def _graph_time_scale_mode(self) -> str:
+        mode = self.graph_time_scale_mode_var.get()
+        return "interval" if mode in {"interval", "Временной интервал"} else "points"
+
     def _axis_float(self, variable: tk.StringVar) -> float | None:
         value = variable.get().strip().replace(",", ".")
         if not value:
@@ -1335,7 +1342,7 @@ class ElementCheckerApp(tk.Tk):
     ) -> tuple[datetime, datetime]:
         timestamps = [timestamp for series in series_points for timestamp, _temperature in series]
         now = datetime.utcnow()
-        if auto_axis and timestamps:
+        if (auto_axis or self._graph_time_scale_mode() == "points") and timestamps:
             start = min(timestamps)
             end = max(timestamps)
             if start == end:
@@ -1454,10 +1461,10 @@ class ElementCheckerApp(tk.Tk):
 
         width = max(canvas.winfo_width(), 260)
         height = max(canvas.winfo_height(), 140)
-        margin_left = 78
+        margin_left = 96
         margin_right = 18
-        margin_top = 18
-        margin_bottom = 42
+        margin_top = 24
+        margin_bottom = 54
         plot_width = max(1, width - margin_left - margin_right)
         plot_height = max(1, height - margin_top - margin_bottom)
         canvas.create_rectangle(margin_left, margin_top, width - margin_right, height - margin_bottom, outline="#c8c8c8")
@@ -1467,16 +1474,24 @@ class ElementCheckerApp(tk.Tk):
             canvas.create_text(width / 2, height / 2, text="No data", fill="#666666")
             return
 
-        y_min, y_max = self._graph_temperature_bounds([points for _label, points in non_empty], auto_axis)
         t_min, t_max = self._graph_time_bounds([points for _label, points in non_empty], auto_axis)
+        non_empty = [
+            (label, [(timestamp, temperature) for timestamp, temperature in points if t_min <= timestamp <= t_max])
+            for label, points in non_empty
+        ]
+        non_empty = [(label, points) for label, points in non_empty if points]
+        if not non_empty:
+            canvas.create_text(width / 2, height / 2, text="No data in interval", fill="#666666")
+            return
+        y_min, y_max = self._graph_temperature_bounds([points for _label, points in non_empty], auto_axis)
         time_span = max(1.0, (t_max - t_min).total_seconds())
 
-        canvas.create_text(margin_left, height - 18, text="UTC", anchor="w", fill="#555555")
+        canvas.create_text(margin_left + plot_width / 2, height - 8, text="UTC", anchor="s", fill="#555555")
         canvas.create_text(8, margin_top, text="Температура, °C", anchor="nw", fill="#555555")
         canvas.create_text(margin_left, height - margin_bottom + 4, text=t_min.strftime("%H:%M:%S"), anchor="n", fill="#666666")
         canvas.create_text(width - margin_right, height - margin_bottom + 4, text=t_max.strftime("%H:%M:%S"), anchor="n", fill="#666666")
-        canvas.create_text(8, margin_top + 18, text=f"{y_max:.1f}", anchor="nw", fill="#666666")
-        canvas.create_text(8, height - margin_bottom - 12, text=f"{y_min:.1f}", anchor="nw", fill="#666666")
+        canvas.create_text(margin_left - 8, margin_top, text=f"{y_max:.1f}", anchor="ne", fill="#666666")
+        canvas.create_text(margin_left - 8, height - margin_bottom, text=f"{y_min:.1f}", anchor="e", fill="#666666")
 
         try:
             time_step_min = max(0.1, float(self.graph_time_step_min_var.get().replace(",", ".")))
@@ -1536,7 +1551,10 @@ class ElementCheckerApp(tk.Tk):
         if sensor_ref is None:
             return []
         device_index, channel_index = sensor_ref
-        return self.plot_history[device_index][channel_index][-self._graph_points_limit() :]
+        points = self.plot_history[device_index][channel_index]
+        if self._graph_time_scale_mode() == "points":
+            return points[-self._graph_points_limit() :]
+        return points[-5000:]
 
     def _draw_graphs(self) -> None:
         if self.graphs_window is None or not self.graphs_window.winfo_exists():
@@ -1571,21 +1589,31 @@ class ElementCheckerApp(tk.Tk):
         window = tk.Toplevel(self.graphs_window or self)
         window.title("Настройки осей графика")
         window.resizable(False, False)
+        window.columnconfigure(1, weight=1)
+
+        ttk.Label(window, text="Шкала времени X").grid(row=0, column=0, padx=8, pady=5, sticky="w")
+        ttk.Combobox(
+            window,
+            textvariable=self.graph_time_scale_mode_var,
+            values=("Последние точки", "Временной интервал"),
+            state="readonly",
+            width=16,
+        ).grid(row=0, column=1, padx=8, pady=5, sticky="ew")
 
         fields = [
             ("Y min, °C", self.graph_y_min_var),
             ("Y max, °C", self.graph_y_max_var),
             ("Дискретность Y, °C", self.graph_y_step_var),
-            ("Диапазон времени X, мин", self.graph_time_range_min_var),
+            ("Интервал времени X, мин", self.graph_time_range_min_var),
             ("Дискретность X, мин", self.graph_time_step_min_var),
             ("Фон графика", self.graph_bg_var),
-            ("Точек истории", self.graph_points_var),
+            ("Точек истории X", self.graph_points_var),
         ]
         for row, (label, variable) in enumerate(fields):
-            ttk.Label(window, text=label).grid(row=row, column=0, padx=8, pady=5, sticky="w")
-            ttk.Entry(window, textvariable=variable, width=18).grid(row=row, column=1, padx=8, pady=5, sticky="ew")
+            ttk.Label(window, text=label).grid(row=row + 1, column=0, padx=8, pady=5, sticky="w")
+            ttk.Entry(window, textvariable=variable, width=18).grid(row=row + 1, column=1, padx=8, pady=5, sticky="ew")
         ttk.Button(window, text="Применить", command=lambda: (self._draw_graphs(), window.destroy())).grid(
-            row=len(fields), column=0, columnspan=2, padx=8, pady=10, sticky="ew"
+            row=len(fields) + 1, column=0, columnspan=2, padx=8, pady=10, sticky="ew"
         )
 
 
