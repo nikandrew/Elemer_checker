@@ -11,7 +11,7 @@ import csv
 import json
 from dataclasses import dataclass
 from dataclasses import asdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tkinter import messagebox, ttk
 from xml.etree import ElementTree
@@ -24,6 +24,12 @@ except ImportError:  # pragma: no cover - shown in UI at runtime
     list_ports = None
 
 try:
+    try:
+        from PyQt5 import sip as pyqt_sip
+
+        pyqt_sip.setdestroyonexit(False)
+    except Exception:
+        pass
     import pyqtgraph as pg
     from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 except ImportError:  # pragma: no cover - shown in UI at runtime
@@ -1333,6 +1339,12 @@ class ElementCheckerApp(tk.Tk):
         except ValueError:
             return 100
 
+    def _utc_now(self) -> datetime:
+        return datetime.now(timezone.utc).replace(tzinfo=None)
+
+    def _utc_from_timestamp(self, timestamp: float) -> datetime:
+        return datetime.fromtimestamp(timestamp, timezone.utc).replace(tzinfo=None)
+
     def _graph_time_scale_mode(self) -> str:
         mode = self.graph_time_scale_mode_var.get()
         if mode in {"points", "По истории точек"}:
@@ -1417,7 +1429,7 @@ class ElementCheckerApp(tk.Tk):
         self, series_points: list[list[tuple[datetime, float]]], auto_axis: bool = False
     ) -> tuple[datetime, datetime]:
         timestamps = [timestamp for series in series_points for timestamp, _temperature in series]
-        now = datetime.utcnow()
+        now = self._utc_now()
         mode = "auto" if auto_axis else self._graph_time_scale_mode()
         if mode in {"auto", "points"} and timestamps:
             start = min(timestamps)
@@ -1444,7 +1456,7 @@ class ElementCheckerApp(tk.Tk):
             minutes = 30.0
         end = max(timestamps) if timestamps else now
         start = end.timestamp() - minutes * 60
-        return datetime.utcfromtimestamp(start), end
+        return self._utc_from_timestamp(start), end
 
     def _graph_y_bounds(self, series_values: list[list[float]]) -> tuple[float, float]:
         values = [value for series in series_values for value in series]
@@ -1784,6 +1796,7 @@ class ElementCheckerApp(tk.Tk):
             )
             return False
         self.qt_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        self.qt_app.setQuitOnLastWindowClosed(False)
         return True
 
     def _create_pyqtgraph_plot(self, title: str):
@@ -2024,7 +2037,7 @@ class ElementCheckerApp(tk.Tk):
             step_seconds = time_step_min * 60
             tick = math.ceil(t_min.timestamp() / step_seconds) * step_seconds
             while tick <= t_max.timestamp() and len(ticks) < 100:
-                ticks.append((tick, datetime.utcfromtimestamp(tick).strftime("%H:%M:%S")))
+                ticks.append((tick, self._utc_from_timestamp(tick).strftime("%H:%M:%S")))
                 tick += step_seconds
             plot.getAxis("bottom").setTicks([ticks])
         else:
@@ -2516,6 +2529,7 @@ class ElementCheckerApp(tk.Tk):
         self.after(100, self._drain_ui_queue)
 
     def _on_close(self) -> None:
+        self._close_graphs_window()
         self._disconnect()
         if self.settings_window is not None and self.settings_window.winfo_exists():
             self.settings_window.destroy()
@@ -2525,6 +2539,12 @@ class ElementCheckerApp(tk.Tk):
             self.logs_window.destroy()
         if self.graphs_window is not None and self.graphs_window.winfo_exists():
             self.graphs_window.destroy()
+        if self.qt_app is not None:
+            try:
+                self.qt_app.processEvents()
+                self.qt_app.quit()
+            except RuntimeError:
+                pass
         self.destroy()
 
 
