@@ -11,6 +11,7 @@ import csv
 import tempfile
 import webbrowser
 import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from dataclasses import dataclass
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
@@ -27,12 +28,12 @@ except ImportError:  # pragma: no cover - shown in UI at runtime
 
 try:
     import plotly.graph_objects as go
-    from plotly.offline import plot as plotly_plot
+    from plotly.offline import get_plotlyjs
     from plotly.subplots import make_subplots
 except ImportError:  # pragma: no cover - shown in UI at runtime
     go = None
+    get_plotlyjs = None
     make_subplots = None
-    plotly_plot = None
 
 FUNCTIONS = {
     "01 - Read Coils": 0x01,
@@ -409,7 +410,6 @@ class ElementCheckerApp(tk.Tk):
         self.graph_option_map: dict[str, tuple[int, int]] = {}
         self.small_graph_canvases: list[tk.Canvas] = []
         self.big_graph_canvas: tk.Canvas | None = None
-        self.plotly_graphs_path = Path(tempfile.gettempdir()) / "elemer_temperature_graphs.html"
         self.plotly_data_path = Path(tempfile.gettempdir()) / "elemer_temperature_graphs.json"
         self.plotly_graphs_window: tk.Toplevel | None = None
         self.plotly_graph_opened = False
@@ -418,6 +418,9 @@ class ElementCheckerApp(tk.Tk):
         self.plotly_small_selected: list[str] = []
         self.plotly_big_vars: dict[str, tk.BooleanVar] = {}
         self.plotly_small_vars: list[tk.StringVar] = []
+        self.plotly_http_server = None
+        self.plotly_http_thread: threading.Thread | None = None
+        self.plotly_http_port: int | None = None
         self.graph_y_min_var = tk.StringVar(value="")
         self.graph_y_max_var = tk.StringVar(value="")
         self.graph_y_step_var = tk.StringVar(value="")
@@ -1776,13 +1779,19 @@ class ElementCheckerApp(tk.Tk):
         )
 
     def _apply_graph_settings(self) -> None:
+        self._write_plotly_initial_data()
         self._draw_graphs()
+
+    def _write_plotly_initial_data(self) -> None:
+        if go is None or make_subplots is None:
+            return
+        self.plotly_data_path.write_text(self._plotly_figure_json(), encoding="utf-8")
 
     def _plotly_graph_window_open(self) -> bool:
         return self.plotly_graphs_window is not None and self.plotly_graphs_window.winfo_exists()
 
     def _open_graphs_window(self) -> None:
-        if go is None or make_subplots is None or plotly_plot is None:
+        if go is None or make_subplots is None or get_plotlyjs is None:
             messagebox.showerror(
                 "Plotly не установлен",
                 "Для окна графиков установите зависимости: pip install plotly",
@@ -1851,9 +1860,12 @@ class ElementCheckerApp(tk.Tk):
             )
 
         self.plotly_graph_opened = True
-        self._write_plotly_html_shell()
         self._draw_graphs()
-        webbrowser.open(self.plotly_graphs_path.as_uri())
+        graph_url = self._ensure_plotly_http_server()
+        if graph_url is None:
+            messagebox.showerror("Ошибка графиков", "Не удалось запустить локальный сервер графиков", parent=self)
+            return
+        webbrowser.open(graph_url)
         self._schedule_graph_refresh()
 
     def _apply_plotly_control_selection(self) -> None:
@@ -1871,6 +1883,15 @@ class ElementCheckerApp(tk.Tk):
         self.plotly_graph_opened = False
         self.plotly_big_vars = {}
         self.plotly_small_vars = []
+        if self.plotly_http_server is not None:
+            try:
+                self.plotly_http_server.shutdown()
+                self.plotly_http_server.server_close()
+            except Exception:
+                pass
+        self.plotly_http_server = None
+        self.plotly_http_thread = None
+        self.plotly_http_port = None
 
     def _plotly_dash(self, line_type: str) -> str:
         if line_type == "Пунктирная":
@@ -2011,22 +2032,63 @@ class ElementCheckerApp(tk.Tk):
             fig.update_yaxes(showgrid=False)
         return json.dumps(fig.to_plotly_json(), ensure_ascii=False, default=str)
 
-    def _write_plotly_html_shell(self) -> None:
-        data_uri = self.plotly_data_path.as_uri()
-        self.plotly_graphs_path.write_text(
-            f"""<!doctype html>
+    def _ensure_plotly_http_server(self) -> str | None:
+        if self.plotly_http_server is not None and self.plotly_http_port is not None:
+            return f"http://127.0.0.1:{self.plotly_http_port}/"
+
+        app = self
+
+        class PlotlyRequestHandler(BaseHTTPRequestHandler):
+            def log_message(self, _format: str, *_args) -> None:
+                return
+
+            def do_GET(self) -> None:
+                try:
+                    if self.path.startswith("/data.json"):
+                        payload = app.plotly_data_path.read_text(encoding="utf-8") if app.plotly_data_path.exists() else "{}"
+                        data = payload.encode("utf-8")
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.send_header("Cache-Control", "no-store")
+                        self.send_header("Content-Length", str(len(data)))
+                        self.end_headers()
+                        self.wfile.write(data)
+                        return
+                    data = app._plotly_html_shell().encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Cache-Control", "no-store")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                except Exception:
+                    self.send_error(500)
+
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", 0), PlotlyRequestHandler)
+        except OSError:
+            return None
+        self.plotly_http_server = server
+        self.plotly_http_port = int(server.server_address[1])
+        self.plotly_http_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        self.plotly_http_thread.start()
+        return f"http://127.0.0.1:{self.plotly_http_port}/"
+
+    def _plotly_html_shell(self) -> str:
+        plotly_js = get_plotlyjs() if get_plotlyjs is not None else ""
+        return f"""<!doctype html>
 <html lang=\"ru\">
 <head>
 <meta charset=\"utf-8\">
 <title>Графики температур</title>
-<script src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>
+<script>{plotly_js}</script>
 <style>body{{margin:0;font-family:Arial,sans-serif;background:#f5f5f5}}#graph{{width:100vw;height:96vh}}.note{{padding:8px 14px;color:#555}}</style>
 </head>
 <body>
 <div class=\"note\">Графики обновляются без перезагрузки страницы. Выбор каналов и дополнительных графиков выполняется в окне приложения.</div>
 <div id=\"graph\"></div>
 <script>
-const dataUrl = {json.dumps(data_uri)};
+const dataUrl = '/data.json';
 let initialized = false;
 async function updateGraph() {{
   try {{
@@ -2048,14 +2110,12 @@ setInterval(updateGraph, 2000);
 </script>
 </body>
 </html>
-""",
-            encoding="utf-8",
-        )
+"""
 
     def _draw_graphs(self) -> None:
         if not self.plotly_graph_opened:
             return
-        if go is None or make_subplots is None or plotly_plot is None:
+        if go is None or make_subplots is None or get_plotlyjs is None:
             return
         self.plotly_data_path.write_text(self._plotly_figure_json(), encoding="utf-8")
 
