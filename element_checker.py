@@ -8,6 +8,8 @@ import time
 import tkinter as tk
 import zipfile
 import csv
+import tempfile
+import webbrowser
 import json
 from dataclasses import dataclass
 from dataclasses import asdict
@@ -24,19 +26,13 @@ except ImportError:  # pragma: no cover - shown in UI at runtime
     list_ports = None
 
 try:
-    try:
-        from PyQt5 import sip as pyqt_sip
-
-        pyqt_sip.setdestroyonexit(False)
-    except Exception:
-        pass
-    import pyqtgraph as pg
-    from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+    import plotly.graph_objects as go
+    from plotly.offline import plot as plotly_plot
+    from plotly.subplots import make_subplots
 except ImportError:  # pragma: no cover - shown in UI at runtime
-    pg = None
-    QtCore = None
-    QtGui = None
-    QtWidgets = None
+    go = None
+    make_subplots = None
+    plotly_plot = None
 
 FUNCTIONS = {
     "01 - Read Coils": 0x01,
@@ -413,16 +409,11 @@ class ElementCheckerApp(tk.Tk):
         self.graph_option_map: dict[str, tuple[int, int]] = {}
         self.small_graph_canvases: list[tk.Canvas] = []
         self.big_graph_canvas: tk.Canvas | None = None
-        self.qt_app = None
-        self.qt_graphs_window = None
-        self.qt_graph_update_after_id = None
-        self.qt_big_plot = None
-        self.qt_small_plots: list[object] = []
-        self.qt_small_selectors: list[object] = []
-        self.qt_small_auto_checks: list[object] = []
-        self.qt_big_auto_check = None
-        self.qt_big_channel_checks: dict[str, object] = {}
-        self.qt_force_axis_update = False
+        self.plotly_graphs_path = Path(tempfile.gettempdir()) / "elemer_temperature_graphs.html"
+        self.plotly_graph_opened = False
+        self.plotly_graph_update_after_id = None
+        self.plotly_big_selected: set[str] = set()
+        self.plotly_small_selected: list[str] = []
         self.graph_y_min_var = tk.StringVar(value="")
         self.graph_y_max_var = tk.StringVar(value="")
         self.graph_y_step_var = tk.StringVar(value="")
@@ -1781,327 +1772,205 @@ class ElementCheckerApp(tk.Tk):
         )
 
     def _apply_graph_settings(self) -> None:
-        self.qt_force_axis_update = True
         self._draw_graphs()
 
-    def _qt_graph_window_open(self) -> bool:
-        return self.qt_graphs_window is not None and self.qt_graphs_window.isVisible()
-
-    def _ensure_qt_app(self) -> bool:
-        if pg is None or QtWidgets is None:
-            messagebox.showerror(
-                "PyQtGraph не установлен",
-                "Для окна графиков установите зависимости: pip install pyqtgraph PyQt5",
-                parent=self,
-            )
-            return False
-        self.qt_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-        self.qt_app.setQuitOnLastWindowClosed(False)
-        return True
-
-    def _create_pyqtgraph_plot(self, title: str):
-        plot = pg.PlotWidget(axisItems={"bottom": pg.DateAxisItem(orientation="bottom")})
-        plot.setTitle(title)
-        plot.setLabel("bottom", "UTC")
-        plot.setLabel("left", "Температура, °C")
-        plot.addLegend(offset=(8, 8))
-        plot.showGrid(x=True, y=True, alpha=0.3)
-        plot.setMenuEnabled(True)
-        return plot
-
-    def _on_qt_graph_controls_changed(self, *_args) -> None:
-        if self.qt_big_auto_check is not None:
-            self.big_graph_auto_axis_var.set(bool(self.qt_big_auto_check.isChecked()))
-        self._draw_graphs()
-
-    def _on_qt_graph_destroyed(self, *_args) -> None:
-        if self.qt_graph_update_after_id is not None:
-            self.after_cancel(self.qt_graph_update_after_id)
-            self.qt_graph_update_after_id = None
-        self.qt_graphs_window = None
-        self.qt_big_plot = None
-        self.qt_small_plots = []
-        self.qt_small_selectors = []
-        self.qt_small_auto_checks = []
-        self.qt_big_auto_check = None
-        self.qt_big_channel_checks = {}
+    def _plotly_graph_window_open(self) -> bool:
+        return self.plotly_graph_opened
 
     def _open_graphs_window(self) -> None:
-        if not self._ensure_qt_app():
+        if go is None or make_subplots is None or plotly_plot is None:
+            messagebox.showerror(
+                "Plotly ?? ??????????",
+                "??? ???? ???????? ?????????? ???????????: pip install plotly",
+                parent=self,
+            )
             return
-        if self._qt_graph_window_open():
-            self.qt_graphs_window.raise_()
-            self.qt_graphs_window.activateWindow()
-            return
-
         options = self._graph_options()
-        window = QtWidgets.QMainWindow()
-        window.setWindowTitle("Графики температур")
-        window.resize(1180, 820)
-        window.destroyed.connect(self._on_qt_graph_destroyed)
-        self.qt_graphs_window = window
-        self.graphs_window = None
-        self.qt_big_channel_checks = {}
-        self.qt_small_plots = []
-        self.qt_small_selectors = []
-        self.qt_small_auto_checks = []
-        self.qt_force_axis_update = True
-
-        central = QtWidgets.QWidget()
-        window.setCentralWidget(central)
-        main_layout = QtWidgets.QHBoxLayout(central)
-
-        graphs_layout = QtWidgets.QVBoxLayout()
-        main_layout.addLayout(graphs_layout, 3)
-
-        self.qt_big_plot = self._create_pyqtgraph_plot("Основной общий график")
-        graphs_layout.addWidget(self.qt_big_plot, 2)
-        self.qt_big_auto_check = QtWidgets.QCheckBox("Автонастройка осей")
-        self.qt_big_auto_check.setChecked(self.big_graph_auto_axis_var.get())
-        self.qt_big_auto_check.stateChanged.connect(self._on_qt_graph_controls_changed)
-        graphs_layout.addWidget(self.qt_big_auto_check)
-
-        for index in range(2):
-            graph_box = QtWidgets.QGroupBox(f"Дополнительный график {index + 1}")
-            graph_layout = QtWidgets.QVBoxLayout(graph_box)
-            controls_layout = QtWidgets.QHBoxLayout()
-            selector = QtWidgets.QComboBox()
-            selector.addItems(options)
-            if index < len(options):
-                selector.setCurrentIndex(index)
-            auto_check = QtWidgets.QCheckBox("Автонастройка осей")
-            selector.currentIndexChanged.connect(self._on_qt_graph_controls_changed)
-            auto_check.stateChanged.connect(self._on_qt_graph_controls_changed)
-            controls_layout.addWidget(selector, 1)
-            controls_layout.addWidget(auto_check)
-            plot = self._create_pyqtgraph_plot(f"Дополнительный график {index + 1}")
-            graph_layout.addLayout(controls_layout)
-            graph_layout.addWidget(plot)
-            graphs_layout.addWidget(graph_box, 1)
-            self.qt_small_selectors.append(selector)
-            self.qt_small_auto_checks.append(auto_check)
-            self.qt_small_plots.append(plot)
-
-        side = QtWidgets.QWidget()
-        side.setMinimumWidth(280)
-        side_layout = QtWidgets.QVBoxLayout(side)
-        main_layout.addWidget(side, 1)
-
-        settings_box = QtWidgets.QGroupBox("Настройки графиков")
-        settings_layout = QtWidgets.QVBoxLayout(settings_box)
-        axis_button = QtWidgets.QPushButton("Оси и диапазоны")
-        axis_button.clicked.connect(self._open_graph_axis_settings_window)
-        refresh_button = QtWidgets.QPushButton("Refresh")
-        refresh_button.clicked.connect(self._apply_graph_settings)
-        settings_layout.addWidget(axis_button)
-        settings_layout.addWidget(refresh_button)
-        side_layout.addWidget(settings_box)
-
-        checks_box = QtWidgets.QGroupBox("Каналы общего графика")
-        checks_layout = QtWidgets.QVBoxLayout(checks_box)
-        scroll = QtWidgets.QScrollArea()
-        scroll.setWidgetResizable(True)
-        checks_widget = QtWidgets.QWidget()
-        checks_inner = QtWidgets.QVBoxLayout(checks_widget)
-        for index, option in enumerate(options):
-            check = QtWidgets.QCheckBox(option)
-            check.setChecked(index < 3)
-            check.stateChanged.connect(self._on_qt_graph_controls_changed)
-            self.qt_big_channel_checks[option] = check
-            checks_inner.addWidget(check)
-        checks_inner.addStretch()
-        scroll.setWidget(checks_widget)
-        checks_layout.addWidget(scroll)
-        side_layout.addWidget(checks_box, 1)
-
-        window.show()
+        if not self.plotly_big_selected:
+            self.plotly_big_selected = set(options[:3])
+        self.plotly_big_selected = {option for option in self.plotly_big_selected if option in options}
+        if not self.plotly_small_selected:
+            self.plotly_small_selected = [options[index] if index < len(options) else "" for index in range(2)]
+        else:
+            self.plotly_small_selected = [option if option in options else (options[index] if index < len(options) else "") for index, option in enumerate(self.plotly_small_selected[:2])]
+            while len(self.plotly_small_selected) < 2:
+                index = len(self.plotly_small_selected)
+                self.plotly_small_selected.append(options[index] if index < len(options) else "")
+        self.plotly_graph_opened = True
         self._draw_graphs()
+        webbrowser.open(self.plotly_graphs_path.as_uri())
         self._schedule_graph_refresh()
 
     def _close_graphs_window(self) -> None:
-        if self.qt_graph_update_after_id is not None:
-            self.after_cancel(self.qt_graph_update_after_id)
-            self.qt_graph_update_after_id = None
-        window = self.qt_graphs_window
-        self.qt_graphs_window = None
-        if window is not None:
-            try:
-                window.close()
-            except RuntimeError:
-                pass
-        self.qt_big_plot = None
-        self.qt_small_plots = []
-        self.qt_small_selectors = []
-        self.qt_small_auto_checks = []
-        self.qt_big_auto_check = None
-        self.qt_big_channel_checks = {}
+        if self.plotly_graph_update_after_id is not None:
+            self.after_cancel(self.plotly_graph_update_after_id)
+            self.plotly_graph_update_after_id = None
+        self.plotly_graph_opened = False
 
-    def _qt_color(self, value: str, fallback: str):
-        color = QtGui.QColor(value.strip() or fallback)
-        if not color.isValid():
-            color = QtGui.QColor(fallback)
-        return color
+    def _plotly_dash(self, line_type: str) -> str:
+        if line_type == "??????????":
+            return "dash"
+        if line_type == "????????":
+            return "dot"
+        return "solid"
 
-    def _qt_pen_style(self, line_type: str):
-        pen_style = getattr(QtCore.Qt, "PenStyle", None)
-        if line_type == "Пунктирная":
-            return getattr(QtCore.Qt, "DashLine", getattr(pen_style, "DashLine", 1))
-        if line_type == "Точечная":
-            return getattr(QtCore.Qt, "DotLine", getattr(pen_style, "DotLine", 3))
-        return getattr(QtCore.Qt, "SolidLine", getattr(pen_style, "SolidLine", 1))
+    def _plotly_color(self, color: str, fallback: str) -> str:
+        color = (color or fallback).strip()
+        return color if color else fallback
 
-    def _qt_series_pen(self, label: str, fallback_color: str):
-        color, width, _dash, _stipple, _show_legend = self._series_style(label, fallback_color)
+    def _plotly_trace(self, label: str, points: list[tuple[datetime, float]], fallback_color: str):
         sensor_ref = self.graph_option_map.get(label)
-        visibility = 100
-        line_type = "Сплошная"
+        line_color = fallback_color
+        line_width = 2
+        line_dash = "solid"
+        opacity = 1.0
+        show_legend = True
         if sensor_ref is not None:
             device_index, channel_index = sensor_ref
             sensor = self.sensor_settings[device_index][channel_index]
-            visibility = sensor.graph_visibility_percent
-            line_type = sensor.graph_line_type
-        qt_color = self._qt_color(color, fallback_color)
-        qt_color.setAlpha(max(0, min(255, round(visibility * 2.55))))
-        return pg.mkPen(qt_color, width=width, style=self._qt_pen_style(line_type))
+            line_color = sensor.graph_color or fallback_color
+            line_width = max(1, sensor.graph_line_width)
+            line_dash = self._plotly_dash(sensor.graph_line_type)
+            opacity = max(0.0, min(1.0, sensor.graph_visibility_percent / 100))
+            show_legend = sensor.graph_show_legend
+        return go.Scatter(
+            x=[timestamp for timestamp, _temperature in points],
+            y=[temperature for _timestamp, temperature in points],
+            mode="lines",
+            name=label,
+            showlegend=show_legend,
+            opacity=opacity,
+            line={"color": self._plotly_color(line_color, fallback_color), "width": line_width, "dash": line_dash},
+        )
 
-    def _configure_pyqtgraph_plot(
+    def _filter_plotly_series(
         self,
-        plot,
-        title: str,
         series: list[tuple[str, list[tuple[datetime, float]]]],
         auto_axis: bool,
-        apply_axis_ranges: bool = False,
-    ) -> None:
-        plot.clear()
-        if plot.plotItem.legend is not None:
-            plot.plotItem.legend.clear()
-        plot.setTitle(title)
-        plot.setLabel("bottom", "UTC")
-        plot.setLabel("left", "Температура, °C")
-        plot.setBackground(self._qt_color(self.graph_bg_var.get(), "white"))
-        try:
-            grid_alpha = max(0.0, min(1.0, int(self.graph_grid_visibility_var.get()) / 100))
-        except ValueError:
-            grid_alpha = 1.0
-        plot.showGrid(x=True, y=True, alpha=grid_alpha)
+    ) -> tuple[list[tuple[str, list[tuple[datetime, float]]]], datetime | None, datetime | None, float | None, float | None]:
+        non_empty = [(label, points) for label, points in series if points]
+        if not non_empty:
+            return [], None, None, None, None
+        t_min, t_max = self._graph_time_bounds([points for _label, points in non_empty], auto_axis)
+        filtered = [
+            (label, [(timestamp, temperature) for timestamp, temperature in points if t_min <= timestamp <= t_max])
+            for label, points in non_empty
+        ]
+        filtered = [(label, points) for label, points in filtered if points]
+        if not filtered:
+            return [], t_min, t_max, None, None
+        y_min, y_max = self._graph_temperature_bounds([points for _label, points in filtered], auto_axis)
+        return filtered, t_min, t_max, y_min, y_max
+
+    def _plotly_axis_options(self, t_min: datetime | None, t_max: datetime | None, y_min: float | None, y_max: float | None, auto_axis: bool) -> dict[str, object]:
+        x_axis: dict[str, object] = {"title": "UTC", "showgrid": True}
+        y_axis: dict[str, object] = {"title": "???????????, ?C", "showgrid": True}
+        grid_color = self._plotly_color(self.graph_grid_color_var.get(), "#eeeeee")
+        x_axis["gridcolor"] = grid_color
+        y_axis["gridcolor"] = grid_color
         try:
             grid_width = max(1, int(self.graph_grid_width_var.get()))
         except ValueError:
             grid_width = 1
-        grid_pen = pg.mkPen(
-            self._qt_color(self.graph_grid_color_var.get(), "#eeeeee"),
-            width=grid_width,
-            style=self._qt_pen_style(self.graph_grid_line_type_var.get()),
-        )
-        plot.getAxis("bottom").setPen(grid_pen)
-        plot.getAxis("left").setPen(grid_pen)
-
-        non_empty = [(label, points) for label, points in series if points]
-        if not non_empty:
-            return
-        t_min, t_max = self._graph_time_bounds([points for _label, points in non_empty], auto_axis)
-        non_empty = [
-            (label, [(timestamp, temperature) for timestamp, temperature in points if t_min <= timestamp <= t_max])
-            for label, points in non_empty
-        ]
-        non_empty = [(label, points) for label, points in non_empty if points]
-        if not non_empty:
-            return
-        if not (auto_axis or apply_axis_ranges):
-            t_min = min(timestamp for _label, points in non_empty for timestamp, _temperature in points)
-            t_max = max(timestamp for _label, points in non_empty for timestamp, _temperature in points)
-        y_min, y_max = self._graph_temperature_bounds([points for _label, points in non_empty], auto_axis)
-        if auto_axis or apply_axis_ranges:
-            plot.setXRange(t_min.timestamp(), t_max.timestamp(), padding=0)
-            plot.setYRange(y_min, y_max, padding=0)
-            plot.enableAutoRange(x=False, y=False)
-        try:
-            y_step = float(self.graph_y_step_var.get().replace(",", "."))
-        except ValueError:
-            y_step = 0.0
-        if y_step > 0:
-            ticks = []
-            tick = math.ceil(y_min / y_step) * y_step
-            while tick <= y_max and len(ticks) < 100:
-                ticks.append((tick, f"{tick:g}"))
-                tick += y_step
-            plot.getAxis("left").setTicks([ticks])
-        else:
-            plot.getAxis("left").setTicks(None)
+        x_axis["gridwidth"] = grid_width
+        y_axis["gridwidth"] = grid_width
         try:
             time_step_min = float(self.graph_time_step_min_var.get().replace(",", "."))
         except ValueError:
             time_step_min = 0.0
         if time_step_min > 0:
-            ticks = []
-            step_seconds = time_step_min * 60
-            tick = math.ceil(t_min.timestamp() / step_seconds) * step_seconds
-            while tick <= t_max.timestamp() and len(ticks) < 100:
-                ticks.append((tick, self._utc_from_timestamp(tick).strftime("%H:%M:%S")))
-                tick += step_seconds
-            plot.getAxis("bottom").setTicks([ticks])
-        else:
-            plot.getAxis("bottom").setTicks(None)
-
-        colors = ("#0b67d1", "#c23b22", "#2f8f2f", "#8a2be2", "#d18f00", "#008b8b", "#444444", "#e377c2")
-        non_empty = sorted(
-            non_empty,
-            key=lambda item: self.sensor_settings[self.graph_option_map[item[0]][0]][self.graph_option_map[item[0]][1]].graph_priority
-            if item[0] in self.graph_option_map
-            else 48,
-        )
-        for series_index, (label, points) in enumerate(non_empty):
-            sensor_ref = self.graph_option_map.get(label)
-            show_legend = True
-            if sensor_ref is not None:
-                device_index, channel_index = sensor_ref
-                show_legend = self.sensor_settings[device_index][channel_index].graph_show_legend
-            x_values = [timestamp.timestamp() for timestamp, _temperature in points]
-            y_values = [temperature for _timestamp, temperature in points]
-            name = label if show_legend else None
-            plot.plot(x_values, y_values, pen=self._qt_series_pen(label, colors[series_index % len(colors)]), name=name)
+            x_axis["dtick"] = time_step_min * 60 * 1000
+        try:
+            y_step = float(self.graph_y_step_var.get().replace(",", "."))
+        except ValueError:
+            y_step = 0.0
+        if y_step > 0:
+            y_axis["dtick"] = y_step
+        if t_min is not None and t_max is not None:
+            x_axis["range"] = [t_min, t_max]
+        if (auto_axis or self.graph_y_manual_var.get()) and y_min is not None and y_max is not None:
+            y_axis["range"] = [y_min, y_max]
+        return {"xaxis": x_axis, "yaxis": y_axis}
 
     def _draw_graphs(self) -> None:
-        if not self._qt_graph_window_open():
+        if not self.plotly_graph_opened:
             return
-        apply_axis_ranges = self.qt_force_axis_update
-        for selector, auto_check, plot in zip(self.qt_small_selectors, self.qt_small_auto_checks, self.qt_small_plots):
-            option = selector.currentText()
-            self._configure_pyqtgraph_plot(
-                plot,
-                option or "Дополнительный график",
-                [(option, self._series_points(option))],
-                auto_check.isChecked(),
-                apply_axis_ranges,
-            )
+        if go is None or make_subplots is None or plotly_plot is None:
+            return
+        options = self._graph_options()
+        self.plotly_big_selected = {option for option in self.plotly_big_selected if option in options}
+        if not self.plotly_big_selected:
+            self.plotly_big_selected = set(options[:3])
+        while len(self.plotly_small_selected) < 2:
+            index = len(self.plotly_small_selected)
+            self.plotly_small_selected.append(options[index] if index < len(options) else "")
 
-        if self.qt_big_plot is not None:
-            selected_series = [
-                (option, self._series_points(option))
-                for option, check in self.qt_big_channel_checks.items()
-                if check.isChecked()
-            ]
-            auto_axis = self.qt_big_auto_check.isChecked() if self.qt_big_auto_check is not None else self.big_graph_auto_axis_var.get()
-            self._configure_pyqtgraph_plot(
-                self.qt_big_plot,
-                "Основной общий график",
-                selected_series,
-                auto_axis,
-                apply_axis_ranges,
-            )
-        self.qt_force_axis_update = False
-        if self.qt_app is not None:
-            self.qt_app.processEvents()
+        fig = make_subplots(
+            rows=3,
+            cols=1,
+            shared_xaxes=False,
+            vertical_spacing=0.08,
+            row_heights=[0.5, 0.25, 0.25],
+            subplot_titles=("???????? ????? ??????", "?????????????? ?????? 1", "?????????????? ?????? 2"),
+        )
+        colors = ("#0b67d1", "#c23b22", "#2f8f2f", "#8a2be2", "#d18f00", "#008b8b", "#444444", "#e377c2")
+
+        big_series = [(option, self._series_points(option)) for option in options if option in self.plotly_big_selected]
+        big_series, t_min, t_max, y_min, y_max = self._filter_plotly_series(big_series, self.big_graph_auto_axis_var.get())
+        for series_index, (label, points) in enumerate(big_series):
+            fig.add_trace(self._plotly_trace(label, points, colors[series_index % len(colors)]), row=1, col=1)
+        axes = self._plotly_axis_options(t_min, t_max, y_min, y_max, self.big_graph_auto_axis_var.get())
+        fig.update_xaxes(**axes["xaxis"], row=1, col=1)
+        fig.update_yaxes(**axes["yaxis"], row=1, col=1)
+
+        for row, option in enumerate(self.plotly_small_selected[:2], start=2):
+            series = [(option, self._series_points(option))] if option else []
+            series, t_min, t_max, y_min, y_max = self._filter_plotly_series(series, False)
+            for series_index, (label, points) in enumerate(series):
+                fig.add_trace(self._plotly_trace(label, points, colors[series_index % len(colors)]), row=row, col=1)
+            axes = self._plotly_axis_options(t_min, t_max, y_min, y_max, False)
+            fig.update_xaxes(**axes["xaxis"], row=row, col=1)
+            fig.update_yaxes(**axes["yaxis"], row=row, col=1)
+
+        try:
+            grid_visibility = max(0.0, min(1.0, int(self.graph_grid_visibility_var.get()) / 100))
+        except ValueError:
+            grid_visibility = 1.0
+        fig.update_layout(
+            title="??????? ??????????",
+            height=900,
+            paper_bgcolor=self._plotly_color(self.graph_bg_var.get(), "white"),
+            plot_bgcolor=self._plotly_color(self.graph_bg_var.get(), "white"),
+            legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+            margin={"l": 70, "r": 30, "t": 90, "b": 50},
+        )
+        if grid_visibility <= 0:
+            fig.update_xaxes(showgrid=False)
+            fig.update_yaxes(showgrid=False)
+        html = plotly_plot(fig, include_plotlyjs="cdn", output_type="div")
+        self.plotly_graphs_path.write_text(
+            """<!doctype html>
+<html lang=\"ru\">
+<head>
+<meta charset=\"utf-8\">
+<meta http-equiv=\"refresh\" content=\"2\">
+<title>??????? ??????????</title>
+<style>body{margin:0;font-family:Arial,sans-serif;background:#f5f5f5}.note{padding:8px 14px;color:#555}</style>
+</head>
+<body>
+<div class=\"note\">??????? ??????????? ????????????? ?????? 2 ???????. ????????? ??????? ? ???? ???????? ? ???????? ??????????.</div>
+"""
+            + html
+            + "\n</body>\n</html>\n",
+            encoding="utf-8",
+        )
 
     def _schedule_graph_refresh(self) -> None:
-        if not self._qt_graph_window_open():
-            self.qt_graph_update_after_id = None
+        if not self.plotly_graph_opened:
+            self.plotly_graph_update_after_id = None
             return
         self._draw_graphs()
-        if self.qt_app is not None:
-            self.qt_app.processEvents()
-        self.qt_graph_update_after_id = self.after(1000, self._schedule_graph_refresh)
-
+        self.plotly_graph_update_after_id = self.after(2000, self._schedule_graph_refresh)
 
     def _available_ports(self) -> tuple[str, ...]:
         if list_ports is None:
@@ -2539,12 +2408,6 @@ class ElementCheckerApp(tk.Tk):
             self.logs_window.destroy()
         if self.graphs_window is not None and self.graphs_window.winfo_exists():
             self.graphs_window.destroy()
-        if self.qt_app is not None:
-            try:
-                self.qt_app.processEvents()
-                self.qt_app.quit()
-            except RuntimeError:
-                pass
         self.destroy()
 
 
