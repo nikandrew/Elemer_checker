@@ -416,6 +416,7 @@ class ElementCheckerApp(tk.Tk):
         self.qt_small_auto_checks: list[object] = []
         self.qt_big_auto_check = None
         self.qt_big_channel_checks: dict[str, object] = {}
+        self.qt_force_axis_update = False
         self.graph_y_min_var = tk.StringVar(value="")
         self.graph_y_max_var = tk.StringVar(value="")
         self.graph_y_step_var = tk.StringVar(value="")
@@ -1763,9 +1764,13 @@ class ElementCheckerApp(tk.Tk):
         update_swatch(self.graph_bg_var, bg_swatch, "white")
         update_swatch(self.graph_grid_color_var, grid_swatch, "#eeeeee")
 
-        ttk.Button(window, text="Применить", command=lambda: (self._draw_graphs(), window.destroy())).grid(
+        ttk.Button(window, text="Применить", command=lambda: (self._apply_graph_settings(), window.destroy())).grid(
             row=3, column=0, padx=10, pady=(6, 10), sticky="ew"
         )
+
+    def _apply_graph_settings(self) -> None:
+        self.qt_force_axis_update = True
+        self._draw_graphs()
 
     def _qt_graph_window_open(self) -> bool:
         return self.qt_graphs_window is not None and self.qt_graphs_window.isVisible()
@@ -1827,6 +1832,7 @@ class ElementCheckerApp(tk.Tk):
         self.qt_small_plots = []
         self.qt_small_selectors = []
         self.qt_small_auto_checks = []
+        self.qt_force_axis_update = True
 
         central = QtWidgets.QWidget()
         window.setCentralWidget(central)
@@ -1873,7 +1879,7 @@ class ElementCheckerApp(tk.Tk):
         axis_button = QtWidgets.QPushButton("Оси и диапазоны")
         axis_button.clicked.connect(self._open_graph_axis_settings_window)
         refresh_button = QtWidgets.QPushButton("Refresh")
-        refresh_button.clicked.connect(self._draw_graphs)
+        refresh_button.clicked.connect(self._apply_graph_settings)
         settings_layout.addWidget(axis_button)
         settings_layout.addWidget(refresh_button)
         side_layout.addWidget(settings_box)
@@ -1945,7 +1951,14 @@ class ElementCheckerApp(tk.Tk):
         qt_color.setAlpha(max(0, min(255, round(visibility * 2.55))))
         return pg.mkPen(qt_color, width=width, style=self._qt_pen_style(line_type))
 
-    def _configure_pyqtgraph_plot(self, plot, title: str, series: list[tuple[str, list[tuple[datetime, float]]]], auto_axis: bool) -> None:
+    def _configure_pyqtgraph_plot(
+        self,
+        plot,
+        title: str,
+        series: list[tuple[str, list[tuple[datetime, float]]]],
+        auto_axis: bool,
+        apply_axis_ranges: bool = False,
+    ) -> None:
         plot.clear()
         if plot.plotItem.legend is not None:
             plot.plotItem.legend.clear()
@@ -1981,9 +1994,14 @@ class ElementCheckerApp(tk.Tk):
         non_empty = [(label, points) for label, points in non_empty if points]
         if not non_empty:
             return
+        if not (auto_axis or apply_axis_ranges):
+            t_min = min(timestamp for _label, points in non_empty for timestamp, _temperature in points)
+            t_max = max(timestamp for _label, points in non_empty for timestamp, _temperature in points)
         y_min, y_max = self._graph_temperature_bounds([points for _label, points in non_empty], auto_axis)
-        plot.setXRange(t_min.timestamp(), t_max.timestamp(), padding=0)
-        plot.setYRange(y_min, y_max, padding=0)
+        if auto_axis or apply_axis_ranges:
+            plot.setXRange(t_min.timestamp(), t_max.timestamp(), padding=0)
+            plot.setYRange(y_min, y_max, padding=0)
+            plot.enableAutoRange(x=False, y=False)
         try:
             y_step = float(self.graph_y_step_var.get().replace(",", "."))
         except ValueError:
@@ -2033,9 +2051,16 @@ class ElementCheckerApp(tk.Tk):
     def _draw_graphs(self) -> None:
         if not self._qt_graph_window_open():
             return
+        apply_axis_ranges = self.qt_force_axis_update
         for selector, auto_check, plot in zip(self.qt_small_selectors, self.qt_small_auto_checks, self.qt_small_plots):
             option = selector.currentText()
-            self._configure_pyqtgraph_plot(plot, option or "Дополнительный график", [(option, self._series_points(option))], auto_check.isChecked())
+            self._configure_pyqtgraph_plot(
+                plot,
+                option or "Дополнительный график",
+                [(option, self._series_points(option))],
+                auto_check.isChecked(),
+                apply_axis_ranges,
+            )
 
         if self.qt_big_plot is not None:
             selected_series = [
@@ -2044,7 +2069,14 @@ class ElementCheckerApp(tk.Tk):
                 if check.isChecked()
             ]
             auto_axis = self.qt_big_auto_check.isChecked() if self.qt_big_auto_check is not None else self.big_graph_auto_axis_var.get()
-            self._configure_pyqtgraph_plot(self.qt_big_plot, "Основной общий график", selected_series, auto_axis)
+            self._configure_pyqtgraph_plot(
+                self.qt_big_plot,
+                "Основной общий график",
+                selected_series,
+                auto_axis,
+                apply_axis_ranges,
+            )
+        self.qt_force_axis_update = False
         if self.qt_app is not None:
             self.qt_app.processEvents()
 
