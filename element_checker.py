@@ -11,7 +11,7 @@ import csv
 import json
 from dataclasses import dataclass
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from tkinter import messagebox, ttk
 from xml.etree import ElementTree
@@ -392,6 +392,7 @@ class ElementCheckerApp(tk.Tk):
         self.graphs_window: tk.Toplevel | None = None
         self.log_lines: list[str] = []
         self.small_graph_vars: list[tk.StringVar] = []
+        self.small_graph_auto_axis_vars: list[tk.BooleanVar] = []
         self.big_graph_vars: list[tk.BooleanVar] = []
         self.big_graph_selected: dict[str, tk.BooleanVar] = {}
         self.graph_option_map: dict[str, tuple[int, int]] = {}
@@ -399,6 +400,7 @@ class ElementCheckerApp(tk.Tk):
         self.big_graph_canvas: tk.Canvas | None = None
         self.graph_y_min_var = tk.StringVar(value="")
         self.graph_y_max_var = tk.StringVar(value="")
+        self.graph_y_step_var = tk.StringVar(value="")
         self.graph_points_var = tk.StringVar(value="100")
         self.graph_bg_var = tk.StringVar(value="white")
         self.graph_x_min_var = tk.StringVar(value="")
@@ -406,6 +408,7 @@ class ElementCheckerApp(tk.Tk):
         self.graph_x_step_var = tk.StringVar(value="")
         self.graph_time_range_min_var = tk.StringVar(value="30")
         self.graph_time_step_min_var = tk.StringVar(value="5")
+        self.big_graph_auto_axis_var = tk.BooleanVar(value=True)
         self.auto_poll_next_due: dict[tuple[int, int], float] = {}
         self.engineering_channel_buttons: list[list[tk.Button]] = []
         self.engineering_detail_frame: ttk.LabelFrame | None = None
@@ -1194,6 +1197,7 @@ class ElementCheckerApp(tk.Tk):
         window.rowconfigure(0, weight=1)
         self.graphs_window = window
         self.small_graph_vars = []
+        self.small_graph_auto_axis_vars = []
         self.small_graph_canvases = []
         self.big_graph_selected = {}
 
@@ -1213,6 +1217,12 @@ class ElementCheckerApp(tk.Tk):
         self.big_graph_canvas = tk.Canvas(big_frame, bg=self.graph_bg_var.get(), highlightthickness=1, highlightbackground="#b0b0b0")
         self.big_graph_canvas.grid(row=0, column=0, padx=6, pady=6, sticky="nsew")
         self.big_graph_canvas.bind("<Button-3>", self._open_graph_axis_settings)
+        ttk.Checkbutton(
+            big_frame,
+            text="Автонастройка осей",
+            variable=self.big_graph_auto_axis_var,
+            command=self._draw_graphs,
+        ).grid(row=1, column=0, padx=6, pady=(0, 6), sticky="w")
 
         for index in range(2):
             graph_frame = ttk.LabelFrame(graphs_frame, text=f"Дополнительный график {index + 1}")
@@ -1221,13 +1231,21 @@ class ElementCheckerApp(tk.Tk):
             graph_frame.rowconfigure(1, weight=1)
 
             selected = tk.StringVar(value=options[index] if index < len(options) else "")
+            auto_axis = tk.BooleanVar(value=True)
             self.small_graph_vars.append(selected)
+            self.small_graph_auto_axis_vars.append(auto_axis)
             combo = ttk.Combobox(graph_frame, textvariable=selected, values=options, state="readonly")
             combo.grid(row=0, column=0, padx=4, pady=4, sticky="ew")
             combo.bind("<<ComboboxSelected>>", lambda _event: self._draw_graphs())
+            ttk.Checkbutton(
+                graph_frame,
+                text="Автонастройка осей",
+                variable=auto_axis,
+                command=self._draw_graphs,
+            ).grid(row=0, column=1, padx=4, pady=4, sticky="e")
 
             canvas = tk.Canvas(graph_frame, height=130, bg=self.graph_bg_var.get(), highlightthickness=1, highlightbackground="#b0b0b0")
-            canvas.grid(row=1, column=0, padx=4, pady=(0, 4), sticky="nsew")
+            canvas.grid(row=1, column=0, columnspan=2, padx=4, pady=(0, 4), sticky="nsew")
             canvas.bind("<Button-3>", self._open_graph_axis_settings)
             self.small_graph_canvases.append(canvas)
 
@@ -1278,6 +1296,7 @@ class ElementCheckerApp(tk.Tk):
             self.graphs_window = None
         self.big_graph_canvas = None
         self.small_graph_canvases = []
+        self.small_graph_auto_axis_vars = []
 
     def _graph_points_limit(self) -> int:
         try:
@@ -1294,20 +1313,39 @@ class ElementCheckerApp(tk.Tk):
         except ValueError:
             return None
 
-    def _graph_temperature_bounds(self, series_points: list[list[tuple[datetime, float]]]) -> tuple[float, float]:
+    def _graph_temperature_bounds(
+        self, series_points: list[list[tuple[datetime, float]]], auto_axis: bool = False
+    ) -> tuple[float, float]:
         values = [temperature for series in series_points for _timestamp, temperature in series]
-        manual_min = self._axis_float(self.graph_x_min_var)
-        manual_max = self._axis_float(self.graph_x_max_var)
-        x_min = manual_min if manual_min is not None else (min(values) if values else 0.0)
-        x_max = manual_max if manual_max is not None else (max(values) if values else 1.0)
-        if x_min == x_max:
-            x_min -= 1.0
-            x_max += 1.0
-        return x_min, x_max
+        manual_min = None if auto_axis else self._axis_float(self.graph_y_min_var)
+        manual_max = None if auto_axis else self._axis_float(self.graph_y_max_var)
+        y_min = manual_min if manual_min is not None else (min(values) if values else 0.0)
+        y_max = manual_max if manual_max is not None else (max(values) if values else 1.0)
+        if y_min == y_max:
+            y_min -= 1.0
+            y_max += 1.0
+        elif auto_axis:
+            padding = max(0.5, (y_max - y_min) * 0.08)
+            y_min -= padding
+            y_max += padding
+        return y_min, y_max
 
-    def _graph_time_bounds(self, series_points: list[list[tuple[datetime, float]]]) -> tuple[datetime, datetime]:
+    def _graph_time_bounds(
+        self, series_points: list[list[tuple[datetime, float]]], auto_axis: bool = False
+    ) -> tuple[datetime, datetime]:
         timestamps = [timestamp for series in series_points for timestamp, _temperature in series]
         now = datetime.utcnow()
+        if auto_axis and timestamps:
+            start = min(timestamps)
+            end = max(timestamps)
+            if start == end:
+                start -= timedelta(seconds=30)
+                end += timedelta(seconds=30)
+            else:
+                padding = max(1.0, (end - start).total_seconds() * 0.05)
+                start -= timedelta(seconds=padding)
+                end += timedelta(seconds=padding)
+            return start, end
         try:
             minutes = max(1.0, float(self.graph_time_range_min_var.get().replace(",", ".")))
         except ValueError:
@@ -1402,7 +1440,12 @@ class ElementCheckerApp(tk.Tk):
                 canvas.create_text(margin_left + 6, margin_top + 12 + legend_row * 14, text=label, anchor="w", fill=color)
                 legend_row += 1
 
-    def _draw_temperature_canvas(self, canvas: tk.Canvas, series: list[tuple[str, list[tuple[datetime, float]]]]) -> None:
+    def _draw_temperature_canvas(
+        self,
+        canvas: tk.Canvas,
+        series: list[tuple[str, list[tuple[datetime, float]]]],
+        auto_axis: bool = False,
+    ) -> None:
         canvas.delete("all")
         try:
             canvas.configure(bg=self.graph_bg_var.get().strip() or "white")
@@ -1414,7 +1457,7 @@ class ElementCheckerApp(tk.Tk):
         margin_left = 78
         margin_right = 18
         margin_top = 18
-        margin_bottom = 38
+        margin_bottom = 42
         plot_width = max(1, width - margin_left - margin_right)
         plot_height = max(1, height - margin_top - margin_bottom)
         canvas.create_rectangle(margin_left, margin_top, width - margin_right, height - margin_bottom, outline="#c8c8c8")
@@ -1424,25 +1467,16 @@ class ElementCheckerApp(tk.Tk):
             canvas.create_text(width / 2, height / 2, text="No data", fill="#666666")
             return
 
-        x_min, x_max = self._graph_temperature_bounds([points for _label, points in non_empty])
-        t_min, t_max = self._graph_time_bounds([points for _label, points in non_empty])
+        y_min, y_max = self._graph_temperature_bounds([points for _label, points in non_empty], auto_axis)
+        t_min, t_max = self._graph_time_bounds([points for _label, points in non_empty], auto_axis)
         time_span = max(1.0, (t_max - t_min).total_seconds())
 
-        canvas.create_text(margin_left, height - 18, text="Температура, °C", anchor="w", fill="#555555")
-        canvas.create_text(8, margin_top, text="UTC", anchor="nw", fill="#555555")
-        canvas.create_text(margin_left, height - margin_bottom + 4, text=f"{x_min:.1f}", anchor="n", fill="#666666")
-        canvas.create_text(width - margin_right, height - margin_bottom + 4, text=f"{x_max:.1f}", anchor="n", fill="#666666")
-        canvas.create_text(8, margin_top, text=t_max.strftime("%H:%M:%S"), anchor="nw", fill="#666666")
-        canvas.create_text(8, height - margin_bottom - 12, text=t_min.strftime("%H:%M:%S"), anchor="nw", fill="#666666")
-
-        x_step = self._axis_float(self.graph_x_step_var)
-        if x_step and x_step > 0:
-            tick = math.ceil(x_min / x_step) * x_step
-            while tick <= x_max:
-                x = margin_left + ((tick - x_min) / (x_max - x_min) * plot_width)
-                canvas.create_line(x, margin_top, x, height - margin_bottom, fill="#eeeeee")
-                canvas.create_text(x, height - margin_bottom + 16, text=f"{tick:g}", anchor="n", fill="#777777")
-                tick += x_step
+        canvas.create_text(margin_left, height - 18, text="UTC", anchor="w", fill="#555555")
+        canvas.create_text(8, margin_top, text="Температура, °C", anchor="nw", fill="#555555")
+        canvas.create_text(margin_left, height - margin_bottom + 4, text=t_min.strftime("%H:%M:%S"), anchor="n", fill="#666666")
+        canvas.create_text(width - margin_right, height - margin_bottom + 4, text=t_max.strftime("%H:%M:%S"), anchor="n", fill="#666666")
+        canvas.create_text(8, margin_top + 18, text=f"{y_max:.1f}", anchor="nw", fill="#666666")
+        canvas.create_text(8, height - margin_bottom - 12, text=f"{y_min:.1f}", anchor="nw", fill="#666666")
 
         try:
             time_step_min = max(0.1, float(self.graph_time_step_min_var.get().replace(",", ".")))
@@ -1451,8 +1485,19 @@ class ElementCheckerApp(tk.Tk):
         step_seconds = time_step_min * 60
         step_count = int(time_span // step_seconds)
         for step in range(1, step_count + 1):
-            y = height - margin_bottom - (step * step_seconds / time_span * plot_height)
-            canvas.create_line(margin_left, y, width - margin_right, y, fill="#eeeeee")
+            x = margin_left + (step * step_seconds / time_span * plot_width)
+            canvas.create_line(x, margin_top, x, height - margin_bottom, fill="#eeeeee")
+            timestamp = t_min + timedelta(seconds=step * step_seconds)
+            canvas.create_text(x, height - margin_bottom + 16, text=timestamp.strftime("%H:%M:%S"), anchor="n", fill="#777777")
+
+        y_step = self._axis_float(self.graph_y_step_var)
+        if y_step and y_step > 0:
+            tick = math.ceil(y_min / y_step) * y_step
+            while tick <= y_max:
+                y = height - margin_bottom - ((tick - y_min) / (y_max - y_min) * plot_height)
+                canvas.create_line(margin_left, y, width - margin_right, y, fill="#eeeeee")
+                canvas.create_text(margin_left - 6, y, text=f"{tick:g}", anchor="e", fill="#777777")
+                tick += y_step
 
         colors = ("#0b67d1", "#c23b22", "#2f8f2f", "#8a2be2", "#d18f00", "#008b8b", "#444444", "#e377c2")
         non_empty = sorted(
@@ -1465,8 +1510,8 @@ class ElementCheckerApp(tk.Tk):
         for series_index, (label, points) in enumerate(non_empty):
             coords: list[float] = []
             for timestamp, temperature in points:
-                x = margin_left + ((temperature - x_min) / (x_max - x_min) * plot_width)
-                y = height - margin_bottom - ((timestamp - t_min).total_seconds() / time_span * plot_height)
+                x = margin_left + ((timestamp - t_min).total_seconds() / time_span * plot_width)
+                y = height - margin_bottom - ((temperature - y_min) / (y_max - y_min) * plot_height)
                 coords.extend([x, y])
             color = colors[series_index % len(colors)]
             color, line_width, dash, stipple, show_legend = self._series_style(label, color)
@@ -1497,9 +1542,11 @@ class ElementCheckerApp(tk.Tk):
         if self.graphs_window is None or not self.graphs_window.winfo_exists():
             return
 
-        for variable, canvas in zip(self.small_graph_vars, self.small_graph_canvases):
+        for variable, canvas, auto_axis in zip(
+            self.small_graph_vars, self.small_graph_canvases, self.small_graph_auto_axis_vars
+        ):
             option = variable.get()
-            self._draw_temperature_canvas(canvas, [(option, self._series_points(option))])
+            self._draw_temperature_canvas(canvas, [(option, self._series_points(option))], auto_axis.get())
 
         if self.big_graph_canvas is not None:
             selected_series = [
@@ -1507,7 +1554,7 @@ class ElementCheckerApp(tk.Tk):
                 for option, selected in self.big_graph_selected.items()
                 if selected.get()
             ]
-            self._draw_temperature_canvas(self.big_graph_canvas, selected_series)
+            self._draw_temperature_canvas(self.big_graph_canvas, selected_series, self.big_graph_auto_axis_var.get())
 
     def _schedule_graph_refresh(self) -> None:
         if self.graphs_window is None or not self.graphs_window.winfo_exists():
@@ -1526,11 +1573,11 @@ class ElementCheckerApp(tk.Tk):
         window.resizable(False, False)
 
         fields = [
-            ("X min, °C", self.graph_x_min_var),
-            ("X max, °C", self.graph_x_max_var),
-            ("Дискретность X, °C", self.graph_x_step_var),
-            ("Диапазон времени Y, мин", self.graph_time_range_min_var),
-            ("Дискретность Y, мин", self.graph_time_step_min_var),
+            ("Y min, °C", self.graph_y_min_var),
+            ("Y max, °C", self.graph_y_max_var),
+            ("Дискретность Y, °C", self.graph_y_step_var),
+            ("Диапазон времени X, мин", self.graph_time_range_min_var),
+            ("Дискретность X, мин", self.graph_time_step_min_var),
             ("Фон графика", self.graph_bg_var),
             ("Точек истории", self.graph_points_var),
         ]
