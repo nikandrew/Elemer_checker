@@ -401,15 +401,22 @@ class ElementCheckerApp(tk.Tk):
         self.graph_y_min_var = tk.StringVar(value="")
         self.graph_y_max_var = tk.StringVar(value="")
         self.graph_y_step_var = tk.StringVar(value="")
+        self.graph_y_manual_var = tk.BooleanVar(value=False)
         self.graph_points_var = tk.StringVar(value="100")
-        self.graph_time_scale_mode_var = tk.StringVar(value="Последние точки")
+        self.graph_time_scale_mode_var = tk.StringVar(value="Автоматический масштаб")
+        self.graph_time_min_var = tk.StringVar(value="")
+        self.graph_time_max_var = tk.StringVar(value="")
         self.graph_bg_var = tk.StringVar(value="white")
+        self.graph_grid_color_var = tk.StringVar(value="#eeeeee")
+        self.graph_grid_line_type_var = tk.StringVar(value="Сплошная")
+        self.graph_grid_width_var = tk.StringVar(value="1")
+        self.graph_grid_visibility_var = tk.StringVar(value="100")
         self.graph_x_min_var = tk.StringVar(value="")
         self.graph_x_max_var = tk.StringVar(value="")
         self.graph_x_step_var = tk.StringVar(value="")
         self.graph_time_range_min_var = tk.StringVar(value="30")
         self.graph_time_step_min_var = tk.StringVar(value="5")
-        self.big_graph_auto_axis_var = tk.BooleanVar(value=True)
+        self.big_graph_auto_axis_var = tk.BooleanVar(value=False)
         self.auto_poll_next_due: dict[tuple[int, int], float] = {}
         self.engineering_channel_buttons: list[list[tk.Button]] = []
         self.engineering_detail_frame: ttk.LabelFrame | None = None
@@ -1234,7 +1241,7 @@ class ElementCheckerApp(tk.Tk):
             graph_frame.rowconfigure(1, weight=1)
 
             selected = tk.StringVar(value=options[index] if index < len(options) else "")
-            auto_axis = tk.BooleanVar(value=True)
+            auto_axis = tk.BooleanVar(value=False)
             self.small_graph_vars.append(selected)
             self.small_graph_auto_axis_vars.append(auto_axis)
             combo = ttk.Combobox(graph_frame, textvariable=selected, values=options, state="readonly")
@@ -1309,7 +1316,11 @@ class ElementCheckerApp(tk.Tk):
 
     def _graph_time_scale_mode(self) -> str:
         mode = self.graph_time_scale_mode_var.get()
-        return "interval" if mode in {"interval", "Временной интервал"} else "points"
+        if mode in {"points", "По истории точек"}:
+            return "points"
+        if mode in {"interval", "Заданный интервал"}:
+            return "interval"
+        return "auto"
 
     def _axis_float(self, variable: tk.StringVar) -> float | None:
         value = variable.get().strip().replace(",", ".")
@@ -1320,18 +1331,64 @@ class ElementCheckerApp(tk.Tk):
         except ValueError:
             return None
 
+    def _parse_graph_time(self, value: str, reference: datetime) -> datetime | None:
+        value = value.strip()
+        if not value:
+            return None
+        formats = ("%H:%M:%S", "%H:%M", "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M")
+        for time_format in formats:
+            try:
+                parsed = datetime.strptime(value, time_format)
+            except ValueError:
+                continue
+            if "%d" in time_format:
+                return parsed
+            return reference.replace(hour=parsed.hour, minute=parsed.minute, second=parsed.second, microsecond=0)
+        return None
+
+    def _line_dash(self, line_type: str) -> tuple[int, ...] | None:
+        if line_type == "Пунктирная":
+            return (6, 3)
+        if line_type == "Точечная":
+            return (2, 3)
+        return None
+
+    def _visibility_stipple(self, visibility_percent: int) -> str | None:
+        if visibility_percent <= 0:
+            return "gray12"
+        if visibility_percent < 35:
+            return "gray25"
+        if visibility_percent < 70:
+            return "gray50"
+        if visibility_percent < 100:
+            return "gray75"
+        return None
+
+    def _grid_style(self) -> tuple[str, int, tuple[int, ...] | None, str | None]:
+        color = self.graph_grid_color_var.get().strip() or "#eeeeee"
+        try:
+            width = max(1, int(self.graph_grid_width_var.get()))
+        except ValueError:
+            width = 1
+        try:
+            visibility = max(0, min(100, int(self.graph_grid_visibility_var.get())))
+        except ValueError:
+            visibility = 100
+        return color, width, self._line_dash(self.graph_grid_line_type_var.get()), self._visibility_stipple(visibility)
+
     def _graph_temperature_bounds(
         self, series_points: list[list[tuple[datetime, float]]], auto_axis: bool = False
     ) -> tuple[float, float]:
         values = [temperature for series in series_points for _timestamp, temperature in series]
-        manual_min = None if auto_axis else self._axis_float(self.graph_y_min_var)
-        manual_max = None if auto_axis else self._axis_float(self.graph_y_max_var)
+        use_manual = self.graph_y_manual_var.get() and not auto_axis
+        manual_min = self._axis_float(self.graph_y_min_var) if use_manual else None
+        manual_max = self._axis_float(self.graph_y_max_var) if use_manual else None
         y_min = manual_min if manual_min is not None else (min(values) if values else 0.0)
         y_max = manual_max if manual_max is not None else (max(values) if values else 1.0)
         if y_min == y_max:
             y_min -= 1.0
             y_max += 1.0
-        elif auto_axis:
+        elif not use_manual:
             padding = max(0.5, (y_max - y_min) * 0.08)
             y_min -= padding
             y_max += padding
@@ -1342,7 +1399,8 @@ class ElementCheckerApp(tk.Tk):
     ) -> tuple[datetime, datetime]:
         timestamps = [timestamp for series in series_points for timestamp, _temperature in series]
         now = datetime.utcnow()
-        if (auto_axis or self._graph_time_scale_mode() == "points") and timestamps:
+        mode = "auto" if auto_axis else self._graph_time_scale_mode()
+        if mode in {"auto", "points"} and timestamps:
             start = min(timestamps)
             end = max(timestamps)
             if start == end:
@@ -1353,6 +1411,14 @@ class ElementCheckerApp(tk.Tk):
                 start -= timedelta(seconds=padding)
                 end += timedelta(seconds=padding)
             return start, end
+        if mode == "interval":
+            reference = max(timestamps) if timestamps else now
+            start = self._parse_graph_time(self.graph_time_min_var.get(), reference)
+            end = self._parse_graph_time(self.graph_time_max_var.get(), reference)
+            if start and end:
+                if end <= start:
+                    end += timedelta(days=1)
+                return start, end
         try:
             minutes = max(1.0, float(self.graph_time_range_min_var.get().replace(",", ".")))
         except ValueError:
@@ -1384,20 +1450,8 @@ class ElementCheckerApp(tk.Tk):
         sensor = self.sensor_settings[device_index][channel_index]
         color = sensor.graph_color or fallback_color
         width = max(1, sensor.graph_line_width)
-        dash = None
-        if sensor.graph_line_type == "Пунктирная":
-            dash = (6, 3)
-        elif sensor.graph_line_type == "Точечная":
-            dash = (2, 3)
-        stipple = None
-        if sensor.graph_visibility_percent <= 0:
-            stipple = "gray12"
-        elif sensor.graph_visibility_percent < 35:
-            stipple = "gray25"
-        elif sensor.graph_visibility_percent < 70:
-            stipple = "gray50"
-        elif sensor.graph_visibility_percent < 100:
-            stipple = "gray75"
+        dash = self._line_dash(sensor.graph_line_type)
+        stipple = self._visibility_stipple(sensor.graph_visibility_percent)
         return color, width, dash, stipple, sensor.graph_show_legend
 
     def _draw_series_canvas(self, canvas: tk.Canvas, series: list[tuple[str, list[float]]]) -> None:
@@ -1485,6 +1539,7 @@ class ElementCheckerApp(tk.Tk):
             return
         y_min, y_max = self._graph_temperature_bounds([points for _label, points in non_empty], auto_axis)
         time_span = max(1.0, (t_max - t_min).total_seconds())
+        grid_color, grid_width, grid_dash, grid_stipple = self._grid_style()
 
         canvas.create_text(margin_left + plot_width / 2, height - 8, text="UTC", anchor="s", fill="#555555")
         canvas.create_text(8, margin_top, text="Температура, °C", anchor="nw", fill="#555555")
@@ -1501,7 +1556,16 @@ class ElementCheckerApp(tk.Tk):
         step_count = int(time_span // step_seconds)
         for step in range(1, step_count + 1):
             x = margin_left + (step * step_seconds / time_span * plot_width)
-            canvas.create_line(x, margin_top, x, height - margin_bottom, fill="#eeeeee")
+            canvas.create_line(
+                x,
+                margin_top,
+                x,
+                height - margin_bottom,
+                fill=grid_color,
+                width=grid_width,
+                dash=grid_dash,
+                stipple=grid_stipple,
+            )
             timestamp = t_min + timedelta(seconds=step * step_seconds)
             canvas.create_text(x, height - margin_bottom + 16, text=timestamp.strftime("%H:%M:%S"), anchor="n", fill="#777777")
 
@@ -1510,7 +1574,16 @@ class ElementCheckerApp(tk.Tk):
             tick = math.ceil(y_min / y_step) * y_step
             while tick <= y_max:
                 y = height - margin_bottom - ((tick - y_min) / (y_max - y_min) * plot_height)
-                canvas.create_line(margin_left, y, width - margin_right, y, fill="#eeeeee")
+                canvas.create_line(
+                    margin_left,
+                    y,
+                    width - margin_right,
+                    y,
+                    fill=grid_color,
+                    width=grid_width,
+                    dash=grid_dash,
+                    stipple=grid_stipple,
+                )
                 canvas.create_text(margin_left - 6, y, text=f"{tick:g}", anchor="e", fill="#777777")
                 tick += y_step
 
@@ -1589,31 +1662,91 @@ class ElementCheckerApp(tk.Tk):
         window = tk.Toplevel(self.graphs_window or self)
         window.title("Настройки осей графика")
         window.resizable(False, False)
-        window.columnconfigure(1, weight=1)
+        window.columnconfigure(0, weight=1)
 
-        ttk.Label(window, text="Шкала времени X").grid(row=0, column=0, padx=8, pady=5, sticky="w")
-        ttk.Combobox(
-            window,
-            textvariable=self.graph_time_scale_mode_var,
-            values=("Последние точки", "Временной интервал"),
-            state="readonly",
-            width=16,
-        ).grid(row=0, column=1, padx=8, pady=5, sticky="ew")
-
-        fields = [
-            ("Y min, °C", self.graph_y_min_var),
-            ("Y max, °C", self.graph_y_max_var),
+        y_frame = ttk.LabelFrame(window, text="Ось Y")
+        y_frame.grid(row=0, column=0, padx=10, pady=(10, 6), sticky="ew")
+        y_frame.columnconfigure(1, weight=1)
+        ttk.Checkbutton(
+            y_frame,
+            text="Использовать заданные настройки Y",
+            variable=self.graph_y_manual_var,
+            command=self._draw_graphs,
+        ).grid(row=0, column=0, columnspan=2, padx=8, pady=(6, 4), sticky="w")
+        y_fields = (
+            ("Ymin, °C", self.graph_y_min_var),
+            ("Ymax, °C", self.graph_y_max_var),
             ("Дискретность Y, °C", self.graph_y_step_var),
-            ("Интервал времени X, мин", self.graph_time_range_min_var),
-            ("Дискретность X, мин", self.graph_time_step_min_var),
-            ("Фон графика", self.graph_bg_var),
-            ("Точек истории X", self.graph_points_var),
-        ]
-        for row, (label, variable) in enumerate(fields):
-            ttk.Label(window, text=label).grid(row=row + 1, column=0, padx=8, pady=5, sticky="w")
-            ttk.Entry(window, textvariable=variable, width=18).grid(row=row + 1, column=1, padx=8, pady=5, sticky="ew")
+        )
+        for row, (label, variable) in enumerate(y_fields, start=1):
+            ttk.Label(y_frame, text=label).grid(row=row, column=0, padx=8, pady=4, sticky="w")
+            ttk.Entry(y_frame, textvariable=variable, width=18).grid(row=row, column=1, padx=8, pady=4, sticky="ew")
+
+        x_frame = ttk.LabelFrame(window, text="Ось X: время")
+        x_frame.grid(row=1, column=0, padx=10, pady=6, sticky="ew")
+        x_frame.columnconfigure(1, weight=1)
+        ttk.Label(x_frame, text="Режим шкалы T").grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        ttk.Combobox(
+            x_frame,
+            textvariable=self.graph_time_scale_mode_var,
+            values=("Автоматический масштаб", "По истории точек", "Заданный интервал"),
+            state="readonly",
+        ).grid(row=0, column=1, padx=8, pady=4, sticky="ew")
+        x_fields = (
+            ("Tmin", self.graph_time_min_var),
+            ("Tmax", self.graph_time_max_var),
+            ("Точек истории T", self.graph_points_var),
+            ("Дискретность T, мин", self.graph_time_step_min_var),
+        )
+        for row, (label, variable) in enumerate(x_fields, start=1):
+            ttk.Label(x_frame, text=label).grid(row=row, column=0, padx=8, pady=4, sticky="w")
+            ttk.Entry(x_frame, textvariable=variable, width=18).grid(row=row, column=1, padx=8, pady=4, sticky="ew")
+
+        graph_frame = ttk.LabelFrame(window, text="График")
+        graph_frame.grid(row=2, column=0, padx=10, pady=6, sticky="ew")
+        graph_frame.columnconfigure(1, weight=1)
+        graph_frame.columnconfigure(3, weight=1)
+        ttk.Label(graph_frame, text="Цвет фона").grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        ttk.Entry(graph_frame, textvariable=self.graph_bg_var, width=14).grid(row=0, column=1, padx=8, pady=4, sticky="ew")
+        bg_swatch = tk.Label(graph_frame, width=4, relief="solid", bd=1)
+        bg_swatch.grid(row=0, column=2, padx=8, pady=4, sticky="ns")
+        ttk.Label(graph_frame, text="Цвет сетки").grid(row=1, column=0, padx=8, pady=4, sticky="w")
+        ttk.Entry(graph_frame, textvariable=self.graph_grid_color_var, width=14).grid(
+            row=1, column=1, padx=8, pady=4, sticky="ew"
+        )
+        grid_swatch = tk.Label(graph_frame, width=4, relief="solid", bd=1)
+        grid_swatch.grid(row=1, column=2, padx=8, pady=4, sticky="ns")
+        ttk.Label(graph_frame, text="Тип сетки").grid(row=2, column=0, padx=8, pady=4, sticky="w")
+        ttk.Combobox(
+            graph_frame,
+            textvariable=self.graph_grid_line_type_var,
+            values=("Сплошная", "Пунктирная", "Точечная"),
+            state="readonly",
+        ).grid(row=2, column=1, columnspan=2, padx=8, pady=4, sticky="ew")
+        ttk.Label(graph_frame, text="Толщина").grid(row=3, column=0, padx=8, pady=4, sticky="w")
+        ttk.Entry(graph_frame, textvariable=self.graph_grid_width_var, width=10).grid(
+            row=3, column=1, padx=8, pady=4, sticky="ew"
+        )
+        ttk.Label(graph_frame, text="Видимость, %").grid(row=3, column=2, padx=8, pady=4, sticky="w")
+        ttk.Entry(graph_frame, textvariable=self.graph_grid_visibility_var, width=10).grid(
+            row=3, column=3, padx=8, pady=4, sticky="ew"
+        )
+
+        def update_swatch(variable: tk.StringVar, swatch: tk.Label, fallback: str) -> None:
+            try:
+                swatch.configure(bg=variable.get().strip() or fallback)
+            except tk.TclError:
+                swatch.configure(bg=TEMP_DISABLED_COLOR)
+
+        self.graph_bg_var.trace_add("write", lambda *_args: update_swatch(self.graph_bg_var, bg_swatch, "white"))
+        self.graph_grid_color_var.trace_add(
+            "write", lambda *_args: update_swatch(self.graph_grid_color_var, grid_swatch, "#eeeeee")
+        )
+        update_swatch(self.graph_bg_var, bg_swatch, "white")
+        update_swatch(self.graph_grid_color_var, grid_swatch, "#eeeeee")
+
         ttk.Button(window, text="Применить", command=lambda: (self._draw_graphs(), window.destroy())).grid(
-            row=len(fields) + 1, column=0, columnspan=2, padx=8, pady=10, sticky="ew"
+            row=3, column=0, padx=10, pady=(6, 10), sticky="ew"
         )
 
 
