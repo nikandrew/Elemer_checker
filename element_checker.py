@@ -23,6 +23,15 @@ except ImportError:  # pragma: no cover - shown in UI at runtime
     serial = None
     list_ports = None
 
+try:
+    import pyqtgraph as pg
+    from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+except ImportError:  # pragma: no cover - shown in UI at runtime
+    pg = None
+    QtCore = None
+    QtGui = None
+    QtWidgets = None
+
 FUNCTIONS = {
     "01 - Read Coils": 0x01,
     "02 - Read Discrete Inputs": 0x02,
@@ -398,6 +407,15 @@ class ElementCheckerApp(tk.Tk):
         self.graph_option_map: dict[str, tuple[int, int]] = {}
         self.small_graph_canvases: list[tk.Canvas] = []
         self.big_graph_canvas: tk.Canvas | None = None
+        self.qt_app = None
+        self.qt_graphs_window = None
+        self.qt_graph_update_after_id = None
+        self.qt_big_plot = None
+        self.qt_small_plots: list[object] = []
+        self.qt_small_selectors: list[object] = []
+        self.qt_small_auto_checks: list[object] = []
+        self.qt_big_auto_check = None
+        self.qt_big_channel_checks: dict[str, object] = {}
         self.graph_y_min_var = tk.StringVar(value="")
         self.graph_y_max_var = tk.StringVar(value="")
         self.graph_y_step_var = tk.StringVar(value="")
@@ -1748,6 +1766,296 @@ class ElementCheckerApp(tk.Tk):
         ttk.Button(window, text="Применить", command=lambda: (self._draw_graphs(), window.destroy())).grid(
             row=3, column=0, padx=10, pady=(6, 10), sticky="ew"
         )
+
+    def _qt_graph_window_open(self) -> bool:
+        return self.qt_graphs_window is not None and self.qt_graphs_window.isVisible()
+
+    def _ensure_qt_app(self) -> bool:
+        if pg is None or QtWidgets is None:
+            messagebox.showerror(
+                "PyQtGraph не установлен",
+                "Для окна графиков установите зависимости: pip install pyqtgraph PyQt5",
+                parent=self,
+            )
+            return False
+        self.qt_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        return True
+
+    def _create_pyqtgraph_plot(self, title: str):
+        plot = pg.PlotWidget(axisItems={"bottom": pg.DateAxisItem(orientation="bottom")})
+        plot.setTitle(title)
+        plot.setLabel("bottom", "UTC")
+        plot.setLabel("left", "Температура, °C")
+        plot.addLegend(offset=(8, 8))
+        plot.showGrid(x=True, y=True, alpha=0.3)
+        plot.setMenuEnabled(True)
+        return plot
+
+    def _on_qt_graph_controls_changed(self, *_args) -> None:
+        if self.qt_big_auto_check is not None:
+            self.big_graph_auto_axis_var.set(bool(self.qt_big_auto_check.isChecked()))
+        self._draw_graphs()
+
+    def _on_qt_graph_destroyed(self, *_args) -> None:
+        if self.qt_graph_update_after_id is not None:
+            self.after_cancel(self.qt_graph_update_after_id)
+            self.qt_graph_update_after_id = None
+        self.qt_graphs_window = None
+        self.qt_big_plot = None
+        self.qt_small_plots = []
+        self.qt_small_selectors = []
+        self.qt_small_auto_checks = []
+        self.qt_big_auto_check = None
+        self.qt_big_channel_checks = {}
+
+    def _open_graphs_window(self) -> None:
+        if not self._ensure_qt_app():
+            return
+        if self._qt_graph_window_open():
+            self.qt_graphs_window.raise_()
+            self.qt_graphs_window.activateWindow()
+            return
+
+        options = self._graph_options()
+        window = QtWidgets.QMainWindow()
+        window.setWindowTitle("Графики температур")
+        window.resize(1180, 820)
+        window.destroyed.connect(self._on_qt_graph_destroyed)
+        self.qt_graphs_window = window
+        self.graphs_window = None
+        self.qt_big_channel_checks = {}
+        self.qt_small_plots = []
+        self.qt_small_selectors = []
+        self.qt_small_auto_checks = []
+
+        central = QtWidgets.QWidget()
+        window.setCentralWidget(central)
+        main_layout = QtWidgets.QHBoxLayout(central)
+
+        graphs_layout = QtWidgets.QVBoxLayout()
+        main_layout.addLayout(graphs_layout, 3)
+
+        self.qt_big_plot = self._create_pyqtgraph_plot("Основной общий график")
+        graphs_layout.addWidget(self.qt_big_plot, 2)
+        self.qt_big_auto_check = QtWidgets.QCheckBox("Автонастройка осей")
+        self.qt_big_auto_check.setChecked(self.big_graph_auto_axis_var.get())
+        self.qt_big_auto_check.stateChanged.connect(self._on_qt_graph_controls_changed)
+        graphs_layout.addWidget(self.qt_big_auto_check)
+
+        for index in range(2):
+            graph_box = QtWidgets.QGroupBox(f"Дополнительный график {index + 1}")
+            graph_layout = QtWidgets.QVBoxLayout(graph_box)
+            controls_layout = QtWidgets.QHBoxLayout()
+            selector = QtWidgets.QComboBox()
+            selector.addItems(options)
+            if index < len(options):
+                selector.setCurrentIndex(index)
+            auto_check = QtWidgets.QCheckBox("Автонастройка осей")
+            selector.currentIndexChanged.connect(self._on_qt_graph_controls_changed)
+            auto_check.stateChanged.connect(self._on_qt_graph_controls_changed)
+            controls_layout.addWidget(selector, 1)
+            controls_layout.addWidget(auto_check)
+            plot = self._create_pyqtgraph_plot(f"Дополнительный график {index + 1}")
+            graph_layout.addLayout(controls_layout)
+            graph_layout.addWidget(plot)
+            graphs_layout.addWidget(graph_box, 1)
+            self.qt_small_selectors.append(selector)
+            self.qt_small_auto_checks.append(auto_check)
+            self.qt_small_plots.append(plot)
+
+        side = QtWidgets.QWidget()
+        side.setMinimumWidth(280)
+        side_layout = QtWidgets.QVBoxLayout(side)
+        main_layout.addWidget(side, 1)
+
+        settings_box = QtWidgets.QGroupBox("Настройки графиков")
+        settings_layout = QtWidgets.QVBoxLayout(settings_box)
+        axis_button = QtWidgets.QPushButton("Оси и диапазоны")
+        axis_button.clicked.connect(self._open_graph_axis_settings_window)
+        refresh_button = QtWidgets.QPushButton("Refresh")
+        refresh_button.clicked.connect(self._draw_graphs)
+        settings_layout.addWidget(axis_button)
+        settings_layout.addWidget(refresh_button)
+        side_layout.addWidget(settings_box)
+
+        checks_box = QtWidgets.QGroupBox("Каналы общего графика")
+        checks_layout = QtWidgets.QVBoxLayout(checks_box)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        checks_widget = QtWidgets.QWidget()
+        checks_inner = QtWidgets.QVBoxLayout(checks_widget)
+        for index, option in enumerate(options):
+            check = QtWidgets.QCheckBox(option)
+            check.setChecked(index < 3)
+            check.stateChanged.connect(self._on_qt_graph_controls_changed)
+            self.qt_big_channel_checks[option] = check
+            checks_inner.addWidget(check)
+        checks_inner.addStretch()
+        scroll.setWidget(checks_widget)
+        checks_layout.addWidget(scroll)
+        side_layout.addWidget(checks_box, 1)
+
+        window.show()
+        self._draw_graphs()
+        self._schedule_graph_refresh()
+
+    def _close_graphs_window(self) -> None:
+        if self.qt_graph_update_after_id is not None:
+            self.after_cancel(self.qt_graph_update_after_id)
+            self.qt_graph_update_after_id = None
+        window = self.qt_graphs_window
+        self.qt_graphs_window = None
+        if window is not None:
+            try:
+                window.close()
+            except RuntimeError:
+                pass
+        self.qt_big_plot = None
+        self.qt_small_plots = []
+        self.qt_small_selectors = []
+        self.qt_small_auto_checks = []
+        self.qt_big_auto_check = None
+        self.qt_big_channel_checks = {}
+
+    def _qt_color(self, value: str, fallback: str):
+        color = QtGui.QColor(value.strip() or fallback)
+        if not color.isValid():
+            color = QtGui.QColor(fallback)
+        return color
+
+    def _qt_pen_style(self, line_type: str):
+        pen_style = getattr(QtCore.Qt, "PenStyle", None)
+        if line_type == "Пунктирная":
+            return getattr(QtCore.Qt, "DashLine", getattr(pen_style, "DashLine", 1))
+        if line_type == "Точечная":
+            return getattr(QtCore.Qt, "DotLine", getattr(pen_style, "DotLine", 3))
+        return getattr(QtCore.Qt, "SolidLine", getattr(pen_style, "SolidLine", 1))
+
+    def _qt_series_pen(self, label: str, fallback_color: str):
+        color, width, _dash, _stipple, _show_legend = self._series_style(label, fallback_color)
+        sensor_ref = self.graph_option_map.get(label)
+        visibility = 100
+        line_type = "Сплошная"
+        if sensor_ref is not None:
+            device_index, channel_index = sensor_ref
+            sensor = self.sensor_settings[device_index][channel_index]
+            visibility = sensor.graph_visibility_percent
+            line_type = sensor.graph_line_type
+        qt_color = self._qt_color(color, fallback_color)
+        qt_color.setAlpha(max(0, min(255, round(visibility * 2.55))))
+        return pg.mkPen(qt_color, width=width, style=self._qt_pen_style(line_type))
+
+    def _configure_pyqtgraph_plot(self, plot, title: str, series: list[tuple[str, list[tuple[datetime, float]]]], auto_axis: bool) -> None:
+        plot.clear()
+        if plot.plotItem.legend is not None:
+            plot.plotItem.legend.clear()
+        plot.setTitle(title)
+        plot.setLabel("bottom", "UTC")
+        plot.setLabel("left", "Температура, °C")
+        plot.setBackground(self._qt_color(self.graph_bg_var.get(), "white"))
+        try:
+            grid_alpha = max(0.0, min(1.0, int(self.graph_grid_visibility_var.get()) / 100))
+        except ValueError:
+            grid_alpha = 1.0
+        plot.showGrid(x=True, y=True, alpha=grid_alpha)
+        try:
+            grid_width = max(1, int(self.graph_grid_width_var.get()))
+        except ValueError:
+            grid_width = 1
+        grid_pen = pg.mkPen(
+            self._qt_color(self.graph_grid_color_var.get(), "#eeeeee"),
+            width=grid_width,
+            style=self._qt_pen_style(self.graph_grid_line_type_var.get()),
+        )
+        plot.getAxis("bottom").setPen(grid_pen)
+        plot.getAxis("left").setPen(grid_pen)
+
+        non_empty = [(label, points) for label, points in series if points]
+        if not non_empty:
+            return
+        t_min, t_max = self._graph_time_bounds([points for _label, points in non_empty], auto_axis)
+        non_empty = [
+            (label, [(timestamp, temperature) for timestamp, temperature in points if t_min <= timestamp <= t_max])
+            for label, points in non_empty
+        ]
+        non_empty = [(label, points) for label, points in non_empty if points]
+        if not non_empty:
+            return
+        y_min, y_max = self._graph_temperature_bounds([points for _label, points in non_empty], auto_axis)
+        plot.setXRange(t_min.timestamp(), t_max.timestamp(), padding=0)
+        plot.setYRange(y_min, y_max, padding=0)
+        try:
+            y_step = float(self.graph_y_step_var.get().replace(",", "."))
+        except ValueError:
+            y_step = 0.0
+        if y_step > 0:
+            ticks = []
+            tick = math.ceil(y_min / y_step) * y_step
+            while tick <= y_max and len(ticks) < 100:
+                ticks.append((tick, f"{tick:g}"))
+                tick += y_step
+            plot.getAxis("left").setTicks([ticks])
+        else:
+            plot.getAxis("left").setTicks(None)
+        try:
+            time_step_min = float(self.graph_time_step_min_var.get().replace(",", "."))
+        except ValueError:
+            time_step_min = 0.0
+        if time_step_min > 0:
+            ticks = []
+            step_seconds = time_step_min * 60
+            tick = math.ceil(t_min.timestamp() / step_seconds) * step_seconds
+            while tick <= t_max.timestamp() and len(ticks) < 100:
+                ticks.append((tick, datetime.utcfromtimestamp(tick).strftime("%H:%M:%S")))
+                tick += step_seconds
+            plot.getAxis("bottom").setTicks([ticks])
+        else:
+            plot.getAxis("bottom").setTicks(None)
+
+        colors = ("#0b67d1", "#c23b22", "#2f8f2f", "#8a2be2", "#d18f00", "#008b8b", "#444444", "#e377c2")
+        non_empty = sorted(
+            non_empty,
+            key=lambda item: self.sensor_settings[self.graph_option_map[item[0]][0]][self.graph_option_map[item[0]][1]].graph_priority
+            if item[0] in self.graph_option_map
+            else 48,
+        )
+        for series_index, (label, points) in enumerate(non_empty):
+            sensor_ref = self.graph_option_map.get(label)
+            show_legend = True
+            if sensor_ref is not None:
+                device_index, channel_index = sensor_ref
+                show_legend = self.sensor_settings[device_index][channel_index].graph_show_legend
+            x_values = [timestamp.timestamp() for timestamp, _temperature in points]
+            y_values = [temperature for _timestamp, temperature in points]
+            name = label if show_legend else None
+            plot.plot(x_values, y_values, pen=self._qt_series_pen(label, colors[series_index % len(colors)]), name=name)
+
+    def _draw_graphs(self) -> None:
+        if not self._qt_graph_window_open():
+            return
+        for selector, auto_check, plot in zip(self.qt_small_selectors, self.qt_small_auto_checks, self.qt_small_plots):
+            option = selector.currentText()
+            self._configure_pyqtgraph_plot(plot, option or "Дополнительный график", [(option, self._series_points(option))], auto_check.isChecked())
+
+        if self.qt_big_plot is not None:
+            selected_series = [
+                (option, self._series_points(option))
+                for option, check in self.qt_big_channel_checks.items()
+                if check.isChecked()
+            ]
+            auto_axis = self.qt_big_auto_check.isChecked() if self.qt_big_auto_check is not None else self.big_graph_auto_axis_var.get()
+            self._configure_pyqtgraph_plot(self.qt_big_plot, "Основной общий график", selected_series, auto_axis)
+        if self.qt_app is not None:
+            self.qt_app.processEvents()
+
+    def _schedule_graph_refresh(self) -> None:
+        if not self._qt_graph_window_open():
+            self.qt_graph_update_after_id = None
+            return
+        self._draw_graphs()
+        if self.qt_app is not None:
+            self.qt_app.processEvents()
+        self.qt_graph_update_after_id = self.after(1000, self._schedule_graph_refresh)
 
 
     def _available_ports(self) -> tuple[str, ...]:
