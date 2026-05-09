@@ -1411,12 +1411,21 @@ class ElementCheckerApp(tk.Tk):
         value = value.strip()
         if not value:
             return None
-        formats = ("%H:%M:%S", "%H:%M", "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M")
+        formats = ("%d.%m %H:%M:%S", "%d.%m %H:%M", "%H:%M:%S", "%H:%M", "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M")
         for time_format in formats:
             try:
                 parsed = datetime.strptime(value, time_format)
             except ValueError:
                 continue
+            if "%d.%m" in time_format and "%Y" not in time_format:
+                return reference.replace(
+                    month=parsed.month,
+                    day=parsed.day,
+                    hour=parsed.hour,
+                    minute=parsed.minute,
+                    second=parsed.second,
+                    microsecond=0,
+                )
             if "%d" in time_format:
                 return parsed
             return reference.replace(hour=parsed.hour, minute=parsed.minute, second=parsed.second, microsecond=0)
@@ -1934,8 +1943,8 @@ class ElementCheckerApp(tk.Tk):
         ).grid(row=0, column=1, padx=8, pady=4, sticky="ew")
         for row, (label, variable) in enumerate(
             (
-                ("Tmin UTC (HH:MM:SS)", time_min_var),
-                ("Tmax UTC (HH:MM:SS)", time_max_var),
+                ("Tmin UTC (DD.MM HH:MM:SS)", time_min_var),
+                ("Tmax UTC (DD.MM HH:MM:SS)", time_max_var),
                 ("Точек истории T", points_var),
                 ("Дискретность T, мин", time_step_var),
             ),
@@ -1948,11 +1957,11 @@ class ElementCheckerApp(tk.Tk):
         graph_frame.grid(row=2, column=0, padx=10, pady=6, sticky="ew")
         graph_frame.columnconfigure(1, weight=1)
         graph_frame.columnconfigure(3, weight=1)
-        ttk.Label(graph_frame, text="Цвет фона").grid(row=0, column=0, padx=8, pady=4, sticky="w")
+        ttk.Label(graph_frame, text="Код цвета фона").grid(row=0, column=0, padx=8, pady=4, sticky="w")
         ttk.Entry(graph_frame, textvariable=bg_var, width=14).grid(row=0, column=1, padx=8, pady=4, sticky="ew")
         bg_swatch = tk.Label(graph_frame, width=4, relief="solid", bd=1)
         bg_swatch.grid(row=0, column=2, padx=8, pady=4, sticky="ns")
-        ttk.Label(graph_frame, text="Цвет сетки").grid(row=1, column=0, padx=8, pady=4, sticky="w")
+        ttk.Label(graph_frame, text="Код цвета сетки").grid(row=1, column=0, padx=8, pady=4, sticky="w")
         ttk.Entry(graph_frame, textvariable=grid_color_var, width=14).grid(row=1, column=1, padx=8, pady=4, sticky="ew")
         grid_swatch = tk.Label(graph_frame, width=4, relief="solid", bd=1)
         grid_swatch.grid(row=1, column=2, padx=8, pady=4, sticky="ns")
@@ -2187,6 +2196,24 @@ class ElementCheckerApp(tk.Tk):
             y_axis["range"] = [y_min, y_max]
         return {"xaxis": x_axis, "yaxis": y_axis}
 
+    def _auto_grid_time_step_seconds(self, t_min: datetime, t_max: datetime) -> float:
+        span = max(1.0, (t_max - t_min).total_seconds())
+        candidates = (1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400)
+        for step in candidates:
+            if span / step <= 12:
+                return float(step)
+        return max(1.0, span / 12)
+
+    def _auto_grid_y_step(self, y_min: float, y_max: float) -> float:
+        span = max(1e-9, abs(y_max - y_min))
+        rough = span / 8
+        magnitude = 10 ** math.floor(math.log10(rough))
+        for factor in (1, 2, 5, 10):
+            step = factor * magnitude
+            if span / step <= 10:
+                return step
+        return rough
+
     def _add_plotly_grid(self, fig, row: int, profile: dict[str, object], t_min: datetime | None, t_max: datetime | None, y_min: float | None, y_max: float | None) -> None:
         if t_min is None or t_max is None or y_min is None or y_max is None:
             return
@@ -2202,10 +2229,11 @@ class ElementCheckerApp(tk.Tk):
         x_axis = f"x{row if row > 1 else ''}"
         y_axis = f"y{row if row > 1 else ''}"
         time_step_min = self._profile_float(profile, "time_step") or 0.0
-        if time_step_min > 0:
-            step_seconds = time_step_min * 60
+        step_seconds = time_step_min * 60 if time_step_min > 0 else self._auto_grid_time_step_seconds(t_min, t_max)
+        if step_seconds > 0:
             tick = math.ceil(t_min.timestamp() / step_seconds) * step_seconds
-            while tick <= t_max.timestamp():
+            max_ticks = 0
+            while tick <= t_max.timestamp() and max_ticks < 200:
                 x_value = self._utc_from_timestamp(tick)
                 fig.add_shape(
                     type="line",
@@ -2220,10 +2248,12 @@ class ElementCheckerApp(tk.Tk):
                     layer="below",
                 )
                 tick += step_seconds
-        y_step = self._profile_float(profile, "y_step") or 0.0
+                max_ticks += 1
+        y_step = self._profile_float(profile, "y_step") or self._auto_grid_y_step(y_min, y_max)
         if y_step > 0:
             tick = math.ceil(y_min / y_step) * y_step
-            while tick <= y_max:
+            max_ticks = 0
+            while tick <= y_max and max_ticks < 200:
                 fig.add_shape(
                     type="line",
                     x0=t_min,
@@ -2237,6 +2267,7 @@ class ElementCheckerApp(tk.Tk):
                     layer="below",
                 )
                 tick += y_step
+                max_ticks += 1
 
     def _plotly_figure_json(self) -> str:
         options = self._graph_options()
