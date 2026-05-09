@@ -400,6 +400,13 @@ class ElementCheckerApp(tk.Tk):
         self.graph_y_min_var = tk.StringVar(value="")
         self.graph_y_max_var = tk.StringVar(value="")
         self.graph_points_var = tk.StringVar(value="100")
+        self.graph_bg_var = tk.StringVar(value="white")
+        self.graph_x_min_var = tk.StringVar(value="")
+        self.graph_x_max_var = tk.StringVar(value="")
+        self.graph_x_step_var = tk.StringVar(value="")
+        self.graph_time_range_min_var = tk.StringVar(value="30")
+        self.graph_time_step_min_var = tk.StringVar(value="5")
+        self.auto_poll_next_due: dict[tuple[int, int], float] = {}
         self.engineering_channel_buttons: list[list[tk.Button]] = []
         self.engineering_detail_frame: ttk.LabelFrame | None = None
         self.engineering_vars: dict[str, tk.Variable] = {}
@@ -432,8 +439,6 @@ class ElementCheckerApp(tk.Tk):
         self.quantity_var = tk.StringVar(value="2")
         self.expected_var = tk.StringVar(value="")
         self.auto_poll_var = tk.BooleanVar(value=False)
-        self.auto_poll_interval_var = tk.StringVar(value="1000")
-        self.auto_poll_unit_var = tk.StringVar(value="ms")
         self.auto_poll_status_var = tk.StringVar(value="Auto poll stopped")
         self.quantity_var.trace_add("write", lambda *_args: self._refresh_expected())
 
@@ -458,7 +463,9 @@ class ElementCheckerApp(tk.Tk):
             row=0, column=2, padx=(0, 12), sticky="w"
         )
         ttk.Button(top_frame, text="Logs", command=self._open_logs_window).grid(row=0, column=3, padx=(0, 12), sticky="w")
-        ttk.Button(top_frame, text="Graphs", command=self._open_graphs_window).grid(row=0, column=4, padx=(0, 12), sticky="w")
+        ttk.Button(top_frame, text="Графики температур", command=self._open_graphs_window).grid(
+            row=0, column=4, padx=(0, 12), sticky="w"
+        )
 
         self.status_var = tk.StringVar(value="Port disconnected")
         ttk.Label(top_frame, textvariable=self.status_var, anchor="w").grid(row=0, column=5, sticky="ew")
@@ -523,29 +530,15 @@ class ElementCheckerApp(tk.Tk):
 
         auto_frame = ttk.LabelFrame(self, text="Auto temperature polling")
         auto_frame.grid(row=3, column=0, padx=12, pady=6, sticky="ew")
-        auto_frame.columnconfigure(6, weight=1)
-
-        ttk.Label(auto_frame, text="Interval").grid(row=0, column=0, padx=8, pady=8, sticky="w")
-        ttk.Entry(
-            auto_frame,
-            textvariable=self.auto_poll_interval_var,
-            width=10,
-        ).grid(row=0, column=1, padx=8, pady=8, sticky="ew")
-        ttk.Combobox(
-            auto_frame,
-            textvariable=self.auto_poll_unit_var,
-            values=("ms", "s"),
-            state="readonly",
-            width=6,
-        ).grid(row=0, column=2, padx=8, pady=8, sticky="ew")
+        auto_frame.columnconfigure(2, weight=1)
 
         self.auto_start_button = ttk.Button(auto_frame, text="Start measurement", command=self._start_auto_poll)
-        self.auto_start_button.grid(row=0, column=3, padx=8, pady=8, sticky="ew")
+        self.auto_start_button.grid(row=0, column=0, padx=8, pady=8, sticky="ew")
         self.auto_stop_button = ttk.Button(auto_frame, text="Stop measurement", command=self._stop_auto_poll)
-        self.auto_stop_button.grid(row=0, column=4, padx=8, pady=8, sticky="ew")
+        self.auto_stop_button.grid(row=0, column=1, padx=8, pady=8, sticky="ew")
         self.auto_stop_button.state(["disabled"])
         ttk.Label(auto_frame, textvariable=self.auto_poll_status_var, anchor="w").grid(
-            row=0, column=5, columnspan=2, padx=8, pady=8, sticky="ew"
+            row=0, column=2, padx=8, pady=8, sticky="ew"
         )
 
     def _sensor_trend(self, device_index: int, channel: int) -> str:
@@ -1121,6 +1114,12 @@ class ElementCheckerApp(tk.Tk):
             return
 
         self._apply_sensor_ui_state(device_index, channel)
+        key = (device_index, channel)
+        if self.auto_poll_var.get():
+            if sensor.used:
+                self.auto_poll_next_due[key] = time.monotonic()
+            else:
+                self.auto_poll_next_due.pop(key, None)
         if self.graphs_window is not None and self.graphs_window.winfo_exists():
             self._draw_graphs()
         self.status_var.set(f"Channel saved: Elemer {device_index + 1}, channel {channel}")
@@ -1169,12 +1168,16 @@ class ElementCheckerApp(tk.Tk):
         self.graph_option_map = {}
         for device_index in range(DEVICE_COUNT):
             for channel_index in range(TELEMETRY_CHANNELS):
-                if not self.sensor_settings[device_index][channel_index].show_temperature_graph:
+                sensor = self.sensor_settings[device_index][channel_index]
+                if not sensor.used or sensor.sensor_type != "Термодатчик" or not sensor.show_temperature_graph:
                     continue
                 label = self._sensor_option_label(device_index, channel_index)
                 options.append(label)
                 self.graph_option_map[label] = (device_index, channel_index)
-        return options
+        return sorted(
+            options,
+            key=lambda item: self.sensor_settings[self.graph_option_map[item][0]][self.graph_option_map[item][1]].graph_priority,
+        )
 
     def _open_graphs_window(self) -> None:
         if self.graphs_window is not None and self.graphs_window.winfo_exists():
@@ -1183,13 +1186,12 @@ class ElementCheckerApp(tk.Tk):
             return
 
         window = tk.Toplevel(self)
-        window.title("Graphs")
+        window.title("Графики температур")
         window.geometry("1180x820")
         window.protocol("WM_DELETE_WINDOW", self._close_graphs_window)
         window.columnconfigure(0, weight=3)
         window.columnconfigure(1, weight=1)
         window.rowconfigure(0, weight=1)
-        window.rowconfigure(1, weight=1)
         self.graphs_window = window
         self.small_graph_vars = []
         self.small_graph_canvases = []
@@ -1197,16 +1199,24 @@ class ElementCheckerApp(tk.Tk):
 
         options = self._graph_options()
 
-        small_frame = ttk.LabelFrame(window, text="Small graphs")
-        small_frame.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
-        for column in range(2):
-            small_frame.columnconfigure(column, weight=1)
-        for row in range(3):
-            small_frame.rowconfigure(row, weight=1)
+        graphs_frame = ttk.Frame(window)
+        graphs_frame.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
+        graphs_frame.columnconfigure(0, weight=1)
+        graphs_frame.rowconfigure(0, weight=2)
+        graphs_frame.rowconfigure(1, weight=1)
+        graphs_frame.rowconfigure(2, weight=1)
 
-        for index in range(6):
-            graph_frame = ttk.LabelFrame(small_frame, text=f"Graph {index + 1}")
-            graph_frame.grid(row=index // 2, column=index % 2, padx=6, pady=6, sticky="nsew")
+        big_frame = ttk.LabelFrame(graphs_frame, text="Основной общий график")
+        big_frame.grid(row=0, column=0, padx=0, pady=(0, 6), sticky="nsew")
+        big_frame.columnconfigure(0, weight=1)
+        big_frame.rowconfigure(0, weight=1)
+        self.big_graph_canvas = tk.Canvas(big_frame, bg=self.graph_bg_var.get(), highlightthickness=1, highlightbackground="#b0b0b0")
+        self.big_graph_canvas.grid(row=0, column=0, padx=6, pady=6, sticky="nsew")
+        self.big_graph_canvas.bind("<Button-3>", self._open_graph_axis_settings)
+
+        for index in range(2):
+            graph_frame = ttk.LabelFrame(graphs_frame, text=f"Дополнительный график {index + 1}")
+            graph_frame.grid(row=index + 1, column=0, padx=0, pady=(6, 6) if index == 0 else (0, 0), sticky="nsew")
             graph_frame.columnconfigure(0, weight=1)
             graph_frame.rowconfigure(1, weight=1)
 
@@ -1216,27 +1226,29 @@ class ElementCheckerApp(tk.Tk):
             combo.grid(row=0, column=0, padx=4, pady=4, sticky="ew")
             combo.bind("<<ComboboxSelected>>", lambda _event: self._draw_graphs())
 
-            canvas = tk.Canvas(graph_frame, height=130, bg="white", highlightthickness=1, highlightbackground="#b0b0b0")
+            canvas = tk.Canvas(graph_frame, height=130, bg=self.graph_bg_var.get(), highlightthickness=1, highlightbackground="#b0b0b0")
             canvas.grid(row=1, column=0, padx=4, pady=(0, 4), sticky="nsew")
+            canvas.bind("<Button-3>", self._open_graph_axis_settings)
             self.small_graph_canvases.append(canvas)
 
         side_frame = ttk.Frame(window)
-        side_frame.grid(row=0, column=1, rowspan=2, padx=(0, 8), pady=8, sticky="nsew")
+        side_frame.grid(row=0, column=1, padx=(0, 8), pady=8, sticky="nsew")
         side_frame.columnconfigure(0, weight=1)
         side_frame.rowconfigure(1, weight=1)
 
-        settings_frame = ttk.LabelFrame(side_frame, text="Graph settings")
+        settings_frame = ttk.LabelFrame(side_frame, text="Настройки графиков")
         settings_frame.grid(row=0, column=0, sticky="ew")
         settings_frame.columnconfigure(1, weight=1)
-        ttk.Label(settings_frame, text="Y min").grid(row=0, column=0, padx=6, pady=4, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.graph_y_min_var, width=10).grid(row=0, column=1, padx=6, pady=4, sticky="ew")
-        ttk.Label(settings_frame, text="Y max").grid(row=1, column=0, padx=6, pady=4, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.graph_y_max_var, width=10).grid(row=1, column=1, padx=6, pady=4, sticky="ew")
-        ttk.Label(settings_frame, text="Points").grid(row=2, column=0, padx=6, pady=4, sticky="w")
-        ttk.Entry(settings_frame, textvariable=self.graph_points_var, width=10).grid(row=2, column=1, padx=6, pady=4, sticky="ew")
-        ttk.Button(settings_frame, text="Refresh", command=self._draw_graphs).grid(row=3, column=0, columnspan=2, padx=6, pady=6, sticky="ew")
+        ttk.Label(settings_frame, text="Фон").grid(row=0, column=0, padx=6, pady=4, sticky="w")
+        ttk.Entry(settings_frame, textvariable=self.graph_bg_var, width=10).grid(row=0, column=1, padx=6, pady=4, sticky="ew")
+        ttk.Label(settings_frame, text="Точек истории").grid(row=1, column=0, padx=6, pady=4, sticky="w")
+        ttk.Entry(settings_frame, textvariable=self.graph_points_var, width=10).grid(row=1, column=1, padx=6, pady=4, sticky="ew")
+        ttk.Button(settings_frame, text="Оси и диапазоны", command=self._open_graph_axis_settings_window).grid(
+            row=2, column=0, columnspan=2, padx=6, pady=6, sticky="ew"
+        )
+        ttk.Button(settings_frame, text="Refresh", command=self._draw_graphs).grid(row=3, column=0, columnspan=2, padx=6, pady=(0, 6), sticky="ew")
 
-        checks_frame = ttk.LabelFrame(side_frame, text="Big graph series")
+        checks_frame = ttk.LabelFrame(side_frame, text="Каналы общего графика")
         checks_frame.grid(row=1, column=0, pady=(8, 0), sticky="nsew")
         checks_frame.columnconfigure(0, weight=1)
         checks_frame.rowconfigure(0, weight=1)
@@ -1257,13 +1269,6 @@ class ElementCheckerApp(tk.Tk):
                 row=index, column=0, padx=4, pady=1, sticky="w"
             )
 
-        big_frame = ttk.LabelFrame(window, text="Combined graph")
-        big_frame.grid(row=1, column=0, padx=8, pady=(0, 8), sticky="nsew")
-        big_frame.columnconfigure(0, weight=1)
-        big_frame.rowconfigure(0, weight=1)
-        self.big_graph_canvas = tk.Canvas(big_frame, bg="white", highlightthickness=1, highlightbackground="#b0b0b0")
-        self.big_graph_canvas.grid(row=0, column=0, padx=6, pady=6, sticky="nsew")
-
         self._draw_graphs()
         self._schedule_graph_refresh()
 
@@ -1279,6 +1284,37 @@ class ElementCheckerApp(tk.Tk):
             return max(2, min(5000, int(self.graph_points_var.get())))
         except ValueError:
             return 100
+
+    def _axis_float(self, variable: tk.StringVar) -> float | None:
+        value = variable.get().strip().replace(",", ".")
+        if not value:
+            return None
+        try:
+            return float(value)
+        except ValueError:
+            return None
+
+    def _graph_temperature_bounds(self, series_points: list[list[tuple[datetime, float]]]) -> tuple[float, float]:
+        values = [temperature for series in series_points for _timestamp, temperature in series]
+        manual_min = self._axis_float(self.graph_x_min_var)
+        manual_max = self._axis_float(self.graph_x_max_var)
+        x_min = manual_min if manual_min is not None else (min(values) if values else 0.0)
+        x_max = manual_max if manual_max is not None else (max(values) if values else 1.0)
+        if x_min == x_max:
+            x_min -= 1.0
+            x_max += 1.0
+        return x_min, x_max
+
+    def _graph_time_bounds(self, series_points: list[list[tuple[datetime, float]]]) -> tuple[datetime, datetime]:
+        timestamps = [timestamp for series in series_points for timestamp, _temperature in series]
+        now = datetime.utcnow()
+        try:
+            minutes = max(1.0, float(self.graph_time_range_min_var.get().replace(",", ".")))
+        except ValueError:
+            minutes = 30.0
+        end = max(timestamps) if timestamps else now
+        start = end.timestamp() - minutes * 60
+        return datetime.utcfromtimestamp(start), end
 
     def _graph_y_bounds(self, series_values: list[list[float]]) -> tuple[float, float]:
         values = [value for series in series_values for value in series]
@@ -1366,6 +1402,82 @@ class ElementCheckerApp(tk.Tk):
                 canvas.create_text(margin_left + 6, margin_top + 12 + legend_row * 14, text=label, anchor="w", fill=color)
                 legend_row += 1
 
+    def _draw_temperature_canvas(self, canvas: tk.Canvas, series: list[tuple[str, list[tuple[datetime, float]]]]) -> None:
+        canvas.delete("all")
+        try:
+            canvas.configure(bg=self.graph_bg_var.get().strip() or "white")
+        except tk.TclError:
+            canvas.configure(bg="white")
+
+        width = max(canvas.winfo_width(), 260)
+        height = max(canvas.winfo_height(), 140)
+        margin_left = 78
+        margin_right = 18
+        margin_top = 18
+        margin_bottom = 38
+        plot_width = max(1, width - margin_left - margin_right)
+        plot_height = max(1, height - margin_top - margin_bottom)
+        canvas.create_rectangle(margin_left, margin_top, width - margin_right, height - margin_bottom, outline="#c8c8c8")
+
+        non_empty = [(label, points) for label, points in series if points]
+        if not non_empty:
+            canvas.create_text(width / 2, height / 2, text="No data", fill="#666666")
+            return
+
+        x_min, x_max = self._graph_temperature_bounds([points for _label, points in non_empty])
+        t_min, t_max = self._graph_time_bounds([points for _label, points in non_empty])
+        time_span = max(1.0, (t_max - t_min).total_seconds())
+
+        canvas.create_text(margin_left, height - 18, text="Температура, °C", anchor="w", fill="#555555")
+        canvas.create_text(8, margin_top, text="UTC", anchor="nw", fill="#555555")
+        canvas.create_text(margin_left, height - margin_bottom + 4, text=f"{x_min:.1f}", anchor="n", fill="#666666")
+        canvas.create_text(width - margin_right, height - margin_bottom + 4, text=f"{x_max:.1f}", anchor="n", fill="#666666")
+        canvas.create_text(8, margin_top, text=t_max.strftime("%H:%M:%S"), anchor="nw", fill="#666666")
+        canvas.create_text(8, height - margin_bottom - 12, text=t_min.strftime("%H:%M:%S"), anchor="nw", fill="#666666")
+
+        x_step = self._axis_float(self.graph_x_step_var)
+        if x_step and x_step > 0:
+            tick = math.ceil(x_min / x_step) * x_step
+            while tick <= x_max:
+                x = margin_left + ((tick - x_min) / (x_max - x_min) * plot_width)
+                canvas.create_line(x, margin_top, x, height - margin_bottom, fill="#eeeeee")
+                canvas.create_text(x, height - margin_bottom + 16, text=f"{tick:g}", anchor="n", fill="#777777")
+                tick += x_step
+
+        try:
+            time_step_min = max(0.1, float(self.graph_time_step_min_var.get().replace(",", ".")))
+        except ValueError:
+            time_step_min = 5.0
+        step_seconds = time_step_min * 60
+        step_count = int(time_span // step_seconds)
+        for step in range(1, step_count + 1):
+            y = height - margin_bottom - (step * step_seconds / time_span * plot_height)
+            canvas.create_line(margin_left, y, width - margin_right, y, fill="#eeeeee")
+
+        colors = ("#0b67d1", "#c23b22", "#2f8f2f", "#8a2be2", "#d18f00", "#008b8b", "#444444", "#e377c2")
+        non_empty = sorted(
+            non_empty,
+            key=lambda item: self.sensor_settings[self.graph_option_map[item[0]][0]][self.graph_option_map[item[0]][1]].graph_priority
+            if item[0] in self.graph_option_map
+            else 48,
+        )
+        legend_row = 0
+        for series_index, (label, points) in enumerate(non_empty):
+            coords: list[float] = []
+            for timestamp, temperature in points:
+                x = margin_left + ((temperature - x_min) / (x_max - x_min) * plot_width)
+                y = height - margin_bottom - ((timestamp - t_min).total_seconds() / time_span * plot_height)
+                coords.extend([x, y])
+            color = colors[series_index % len(colors)]
+            color, line_width, dash, stipple, show_legend = self._series_style(label, color)
+            if len(coords) >= 4:
+                canvas.create_line(*coords, fill=color, width=line_width, dash=dash, stipple=stipple)
+            elif coords:
+                canvas.create_oval(coords[0] - 2, coords[1] - 2, coords[0] + 2, coords[1] + 2, fill=color, outline=color)
+            if show_legend:
+                canvas.create_text(margin_left + 6, margin_top + 12 + legend_row * 14, text=label, anchor="w", fill=color)
+                legend_row += 1
+
     def _series_values(self, option: str) -> list[float]:
         sensor_ref = self.graph_option_map.get(option)
         if sensor_ref is None:
@@ -1374,27 +1486,60 @@ class ElementCheckerApp(tk.Tk):
         points = self.plot_history[device_index][channel_index][-self._graph_points_limit() :]
         return [temperature for _timestamp, temperature in points]
 
+    def _series_points(self, option: str) -> list[tuple[datetime, float]]:
+        sensor_ref = self.graph_option_map.get(option)
+        if sensor_ref is None:
+            return []
+        device_index, channel_index = sensor_ref
+        return self.plot_history[device_index][channel_index][-self._graph_points_limit() :]
+
     def _draw_graphs(self) -> None:
         if self.graphs_window is None or not self.graphs_window.winfo_exists():
             return
 
         for variable, canvas in zip(self.small_graph_vars, self.small_graph_canvases):
             option = variable.get()
-            self._draw_series_canvas(canvas, [(option, self._series_values(option))])
+            self._draw_temperature_canvas(canvas, [(option, self._series_points(option))])
 
         if self.big_graph_canvas is not None:
             selected_series = [
-                (option, self._series_values(option))
+                (option, self._series_points(option))
                 for option, selected in self.big_graph_selected.items()
                 if selected.get()
             ]
-            self._draw_series_canvas(self.big_graph_canvas, selected_series)
+            self._draw_temperature_canvas(self.big_graph_canvas, selected_series)
 
     def _schedule_graph_refresh(self) -> None:
         if self.graphs_window is None or not self.graphs_window.winfo_exists():
             return
         self._draw_graphs()
         self.graphs_window.after(1000, self._schedule_graph_refresh)
+
+    def _open_graph_axis_settings(self, event: tk.Event) -> None:
+        menu = tk.Menu(self, tearoff=False)
+        menu.add_command(label="Настроить оси и фон", command=self._open_graph_axis_settings_window)
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _open_graph_axis_settings_window(self) -> None:
+        window = tk.Toplevel(self.graphs_window or self)
+        window.title("Настройки осей графика")
+        window.resizable(False, False)
+
+        fields = [
+            ("X min, °C", self.graph_x_min_var),
+            ("X max, °C", self.graph_x_max_var),
+            ("Дискретность X, °C", self.graph_x_step_var),
+            ("Диапазон времени Y, мин", self.graph_time_range_min_var),
+            ("Дискретность Y, мин", self.graph_time_step_min_var),
+            ("Фон графика", self.graph_bg_var),
+            ("Точек истории", self.graph_points_var),
+        ]
+        for row, (label, variable) in enumerate(fields):
+            ttk.Label(window, text=label).grid(row=row, column=0, padx=8, pady=5, sticky="w")
+            ttk.Entry(window, textvariable=variable, width=18).grid(row=row, column=1, padx=8, pady=5, sticky="ew")
+        ttk.Button(window, text="Применить", command=lambda: (self._draw_graphs(), window.destroy())).grid(
+            row=len(fields), column=0, columnspan=2, padx=8, pady=10, sticky="ew"
+        )
 
 
     def _available_ports(self) -> tuple[str, ...]:
@@ -1557,6 +1702,58 @@ class ElementCheckerApp(tk.Tk):
         thread.start()
         return True
 
+    def _request_due_temperatures(self) -> bool:
+        if not self._ensure_connected():
+            return False
+        if self.temperature_poll_running:
+            return False
+
+        now = time.monotonic()
+        due_channels: list[tuple[int, int]] = []
+        for device_index in range(DEVICE_COUNT):
+            for channel in range(1, TELEMETRY_CHANNELS + 1):
+                sensor = self.sensor_settings[device_index][channel - 1]
+                key = (device_index, channel)
+                if not sensor.used:
+                    self.auto_poll_next_due.pop(key, None)
+                    continue
+                if key not in self.auto_poll_next_due:
+                    self.auto_poll_next_due[key] = now
+                if now >= self.auto_poll_next_due[key]:
+                    due_channels.append(key)
+                    self.auto_poll_next_due[key] = now + max(0.5, min(2.0, sensor.poll_period_s))
+
+        if not due_channels:
+            return False
+
+        try:
+            settings_by_device = [self._settings(device_index) for device_index in range(DEVICE_COUNT)]
+        except Exception as exc:
+            messagebox.showerror("Telemetry settings error", str(exc))
+            return False
+
+        self.temperature_poll_running = True
+
+        def worker() -> None:
+            try:
+                for device_index, channel in due_channels:
+                    settings = settings_by_device[device_index]
+                    try:
+                        address = TELEMETRY_BASE_ADDRESS + (channel - 1) * TELEMETRY_REGISTERS_PER_CHANNEL
+                        request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
+                        self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
+                        response = self._transact(request, 9)
+                        self.ui_queue.put(("telemetry", f"{device_index}|{channel}|{settings.slave_addr}|1|{response.hex()}"))
+                        time.sleep(max(0.02, settings.scan_rate_ms / 1000 / 10))
+                    except Exception as exc:
+                        self.ui_queue.put(("temp", f"{device_index}|{channel}|error"))
+                        self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: Error: {exc}"))
+            finally:
+                self.ui_queue.put(("poll_done", "auto"))
+
+        threading.Thread(target=worker, daemon=True).start()
+        return True
+
     def _send_request(self, request: bytes, expected_size: int, callback) -> None:
         if not self._ensure_connected():
             return
@@ -1667,31 +1864,18 @@ class ElementCheckerApp(tk.Tk):
         else:
             self.start_address_var.set(str(value))
 
-    def _auto_poll_interval_ms(self) -> int:
-        raw_value = self.auto_poll_interval_var.get().strip().replace(",", ".")
-        if not raw_value:
-            raise ValueError("Auto poll interval is empty")
-        try:
-            value = float(raw_value)
-        except ValueError as exc:
-            raise ValueError("Auto poll interval must be a number") from exc
-        if self.auto_poll_unit_var.get() == "s":
-            value *= 1000
-        delay = int(value)
-        if not 100 <= delay <= 100000:
-            raise ValueError("Auto poll interval must be from 100 ms to 100 s")
-        return delay
-
     def _start_auto_poll(self) -> None:
         if not self._ensure_connected():
             return
-        try:
-            self._auto_poll_interval_ms()
-        except Exception as exc:
-            messagebox.showerror("Auto poll settings error", str(exc))
-            return
 
         self.auto_poll_var.set(True)
+        now = time.monotonic()
+        self.auto_poll_next_due = {
+            (device_index, channel): now
+            for device_index in range(DEVICE_COUNT)
+            for channel in range(1, TELEMETRY_CHANNELS + 1)
+            if self.sensor_settings[device_index][channel - 1].used
+        }
         self._start_measurement_segment()
         self.auto_start_button.state(["disabled"])
         self.auto_stop_button.state(["!disabled"])
@@ -1701,6 +1885,7 @@ class ElementCheckerApp(tk.Tk):
     def _stop_auto_poll(self) -> None:
         self.auto_poll_var.set(False)
         self._cancel_auto_poll()
+        self.auto_poll_next_due = {}
         was_recording = self.measurement_recording
         self.measurement_recording = False
         if was_recording:
@@ -1714,12 +1899,7 @@ class ElementCheckerApp(tk.Tk):
 
     def _schedule_auto_poll(self, delay_ms: int | None = None) -> None:
         self._cancel_auto_poll()
-        try:
-            delay = self._auto_poll_interval_ms() if delay_ms is None else delay_ms
-        except Exception as exc:
-            self._stop_auto_poll()
-            messagebox.showerror("Auto poll settings error", str(exc))
-            return
+        delay = 100 if delay_ms is None else delay_ms
         self.auto_poll_after_id = self.after(delay, self._auto_poll_once)
 
     def _auto_poll_once(self) -> None:
@@ -1729,7 +1909,7 @@ class ElementCheckerApp(tk.Tk):
                 self._stop_auto_poll()
                 return
             self.auto_poll_status_var.set("Polling...")
-            started = self._request_all_temperatures(auto=True)
+            started = self._request_due_temperatures()
             if not started:
                 self._schedule_auto_poll()
 

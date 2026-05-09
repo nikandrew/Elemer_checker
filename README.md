@@ -11,7 +11,7 @@ Engineering channel parameters are saved to `channel_settings.json` after confir
 
 On startup the app reads `element_checker_settings.xlsx` from the repository folder. Sensor names are taken from `Name`; sensors where `Used` is not `1` are disabled. `Tmin` and `Tmax` define the cell indicator color: blue below minimum, green in range, red above maximum.
 
-Automatic temperature polling is configured in the main window. The polling interval can be set from `100 ms` to `100 s`. During automatic polling valid temperature measurements are buffered and saved as CSV files in `measurements`.
+Automatic temperature polling is configured in the main window. During automatic polling each active sensor is polled according to its channel polling period from the Engineering menu. Valid temperature measurements are buffered and saved as CSV files in `measurements`.
 
 CSV files are written when measurement is stopped or every 10 minutes of automatic operation. File names use `Elemer_<start>_<end>.csv`, where dates are formatted as `HHMM_DDMMYY`. Each CSV row contains one timestamp and columns for all 48 sensors.
 
