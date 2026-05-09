@@ -410,10 +410,14 @@ class ElementCheckerApp(tk.Tk):
         self.small_graph_canvases: list[tk.Canvas] = []
         self.big_graph_canvas: tk.Canvas | None = None
         self.plotly_graphs_path = Path(tempfile.gettempdir()) / "elemer_temperature_graphs.html"
+        self.plotly_data_path = Path(tempfile.gettempdir()) / "elemer_temperature_graphs.json"
+        self.plotly_graphs_window: tk.Toplevel | None = None
         self.plotly_graph_opened = False
         self.plotly_graph_update_after_id = None
         self.plotly_big_selected: set[str] = set()
         self.plotly_small_selected: list[str] = []
+        self.plotly_big_vars: dict[str, tk.BooleanVar] = {}
+        self.plotly_small_vars: list[tk.StringVar] = []
         self.graph_y_min_var = tk.StringVar(value="")
         self.graph_y_max_var = tk.StringVar(value="")
         self.graph_y_step_var = tk.StringVar(value="")
@@ -1775,42 +1779,103 @@ class ElementCheckerApp(tk.Tk):
         self._draw_graphs()
 
     def _plotly_graph_window_open(self) -> bool:
-        return self.plotly_graph_opened
+        return self.plotly_graphs_window is not None and self.plotly_graphs_window.winfo_exists()
 
     def _open_graphs_window(self) -> None:
         if go is None or make_subplots is None or plotly_plot is None:
             messagebox.showerror(
-                "Plotly ?? ??????????",
-                "??? ???? ???????? ?????????? ???????????: pip install plotly",
+                "Plotly не установлен",
+                "Для окна графиков установите зависимости: pip install plotly",
                 parent=self,
             )
             return
+        if self._plotly_graph_window_open():
+            self.plotly_graphs_window.lift()
+            self.plotly_graphs_window.focus_set()
+            return
+
         options = self._graph_options()
         if not self.plotly_big_selected:
             self.plotly_big_selected = set(options[:3])
         self.plotly_big_selected = {option for option in self.plotly_big_selected if option in options}
-        if not self.plotly_small_selected:
-            self.plotly_small_selected = [options[index] if index < len(options) else "" for index in range(2)]
-        else:
-            self.plotly_small_selected = [option if option in options else (options[index] if index < len(options) else "") for index, option in enumerate(self.plotly_small_selected[:2])]
-            while len(self.plotly_small_selected) < 2:
-                index = len(self.plotly_small_selected)
-                self.plotly_small_selected.append(options[index] if index < len(options) else "")
+        self.plotly_small_selected = [option for option in self.plotly_small_selected[:2] if option in options]
+        while len(self.plotly_small_selected) < 2:
+            index = len(self.plotly_small_selected)
+            self.plotly_small_selected.append(options[index] if index < len(options) else "")
+
+        window = tk.Toplevel(self)
+        window.title("Графики температур")
+        window.geometry("420x720")
+        window.protocol("WM_DELETE_WINDOW", self._close_graphs_window)
+        window.columnconfigure(0, weight=1)
+        window.rowconfigure(2, weight=1)
+        self.plotly_graphs_window = window
+        self.plotly_big_vars = {}
+        self.plotly_small_vars = []
+
+        controls = ttk.LabelFrame(window, text="Дополнительные графики")
+        controls.grid(row=0, column=0, padx=10, pady=(10, 6), sticky="ew")
+        controls.columnconfigure(1, weight=1)
+        for index in range(2):
+            ttk.Label(controls, text=f"График {index + 1}").grid(row=index, column=0, padx=8, pady=5, sticky="w")
+            variable = tk.StringVar(value=self.plotly_small_selected[index] if index < len(self.plotly_small_selected) else "")
+            self.plotly_small_vars.append(variable)
+            combo = ttk.Combobox(controls, textvariable=variable, values=options, state="readonly")
+            combo.grid(row=index, column=1, padx=8, pady=5, sticky="ew")
+            combo.bind("<<ComboboxSelected>>", lambda _event: self._apply_plotly_control_selection())
+
+        buttons = ttk.Frame(window)
+        buttons.grid(row=1, column=0, padx=10, pady=6, sticky="ew")
+        buttons.columnconfigure(0, weight=1)
+        buttons.columnconfigure(1, weight=1)
+        ttk.Button(buttons, text="Настройки осей", command=self._open_graph_axis_settings_window).grid(row=0, column=0, padx=(0, 4), sticky="ew")
+        ttk.Button(buttons, text="Обновить графики", command=self._apply_graph_settings).grid(row=0, column=1, padx=(4, 0), sticky="ew")
+
+        checks_frame = ttk.LabelFrame(window, text="Каналы основного графика")
+        checks_frame.grid(row=2, column=0, padx=10, pady=(6, 10), sticky="nsew")
+        checks_frame.columnconfigure(0, weight=1)
+        checks_frame.rowconfigure(0, weight=1)
+        checks_canvas = tk.Canvas(checks_frame, highlightthickness=0)
+        checks_canvas.grid(row=0, column=0, sticky="nsew")
+        checks_scroll = ttk.Scrollbar(checks_frame, orient="vertical", command=checks_canvas.yview)
+        checks_scroll.grid(row=0, column=1, sticky="ns")
+        checks_canvas.configure(yscrollcommand=checks_scroll.set)
+        inner = ttk.Frame(checks_canvas)
+        checks_canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda _event: checks_canvas.configure(scrollregion=checks_canvas.bbox("all")))
+        for row, option in enumerate(options):
+            variable = tk.BooleanVar(value=option in self.plotly_big_selected)
+            self.plotly_big_vars[option] = variable
+            ttk.Checkbutton(inner, text=option, variable=variable, command=self._apply_plotly_control_selection).grid(
+                row=row, column=0, padx=4, pady=1, sticky="w"
+            )
+
         self.plotly_graph_opened = True
+        self._write_plotly_html_shell()
         self._draw_graphs()
         webbrowser.open(self.plotly_graphs_path.as_uri())
         self._schedule_graph_refresh()
+
+    def _apply_plotly_control_selection(self) -> None:
+        self.plotly_big_selected = {option for option, variable in self.plotly_big_vars.items() if variable.get()}
+        self.plotly_small_selected = [variable.get() for variable in self.plotly_small_vars]
+        self._draw_graphs()
 
     def _close_graphs_window(self) -> None:
         if self.plotly_graph_update_after_id is not None:
             self.after_cancel(self.plotly_graph_update_after_id)
             self.plotly_graph_update_after_id = None
+        if self.plotly_graphs_window is not None and self.plotly_graphs_window.winfo_exists():
+            self.plotly_graphs_window.destroy()
+        self.plotly_graphs_window = None
         self.plotly_graph_opened = False
+        self.plotly_big_vars = {}
+        self.plotly_small_vars = []
 
     def _plotly_dash(self, line_type: str) -> str:
-        if line_type == "??????????":
+        if line_type == "Пунктирная":
             return "dash"
-        if line_type == "????????":
+        if line_type == "Точечная":
             return "dot"
         return "solid"
 
@@ -1864,7 +1929,7 @@ class ElementCheckerApp(tk.Tk):
 
     def _plotly_axis_options(self, t_min: datetime | None, t_max: datetime | None, y_min: float | None, y_max: float | None, auto_axis: bool) -> dict[str, object]:
         x_axis: dict[str, object] = {"title": "UTC", "showgrid": True}
-        y_axis: dict[str, object] = {"title": "???????????, ?C", "showgrid": True}
+        y_axis: dict[str, object] = {"title": "Температура, °C", "showgrid": True}
         grid_color = self._plotly_color(self.graph_grid_color_var.get(), "#eeeeee")
         x_axis["gridcolor"] = grid_color
         y_axis["gridcolor"] = grid_color
@@ -1892,11 +1957,7 @@ class ElementCheckerApp(tk.Tk):
             y_axis["range"] = [y_min, y_max]
         return {"xaxis": x_axis, "yaxis": y_axis}
 
-    def _draw_graphs(self) -> None:
-        if not self.plotly_graph_opened:
-            return
-        if go is None or make_subplots is None or plotly_plot is None:
-            return
+    def _plotly_figure_json(self) -> str:
         options = self._graph_options()
         self.plotly_big_selected = {option for option in self.plotly_big_selected if option in options}
         if not self.plotly_big_selected:
@@ -1911,7 +1972,7 @@ class ElementCheckerApp(tk.Tk):
             shared_xaxes=False,
             vertical_spacing=0.08,
             row_heights=[0.5, 0.25, 0.25],
-            subplot_titles=("???????? ????? ??????", "?????????????? ?????? 1", "?????????????? ?????? 2"),
+            subplot_titles=("Основной общий график", "Дополнительный график 1", "Дополнительный график 2"),
         )
         colors = ("#0b67d1", "#c23b22", "#2f8f2f", "#8a2be2", "#d18f00", "#008b8b", "#444444", "#e377c2")
 
@@ -1937,33 +1998,66 @@ class ElementCheckerApp(tk.Tk):
         except ValueError:
             grid_visibility = 1.0
         fig.update_layout(
-            title="??????? ??????????",
+            title="Графики температур",
             height=900,
             paper_bgcolor=self._plotly_color(self.graph_bg_var.get(), "white"),
             plot_bgcolor=self._plotly_color(self.graph_bg_var.get(), "white"),
             legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
             margin={"l": 70, "r": 30, "t": 90, "b": 50},
+            uirevision="elemer-graphs",
         )
         if grid_visibility <= 0:
             fig.update_xaxes(showgrid=False)
             fig.update_yaxes(showgrid=False)
-        html = plotly_plot(fig, include_plotlyjs="cdn", output_type="div")
+        return json.dumps(fig.to_plotly_json(), ensure_ascii=False, default=str)
+
+    def _write_plotly_html_shell(self) -> None:
+        data_uri = self.plotly_data_path.as_uri()
         self.plotly_graphs_path.write_text(
-            """<!doctype html>
+            f"""<!doctype html>
 <html lang=\"ru\">
 <head>
 <meta charset=\"utf-8\">
-<meta http-equiv=\"refresh\" content=\"2\">
-<title>??????? ??????????</title>
-<style>body{margin:0;font-family:Arial,sans-serif;background:#f5f5f5}.note{padding:8px 14px;color:#555}</style>
+<title>Графики температур</title>
+<script src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>
+<style>body{{margin:0;font-family:Arial,sans-serif;background:#f5f5f5}}#graph{{width:100vw;height:96vh}}.note{{padding:8px 14px;color:#555}}</style>
 </head>
 <body>
-<div class=\"note\">??????? ??????????? ????????????? ?????? 2 ???????. ????????? ??????? ? ???? ???????? ? ???????? ??????????.</div>
-"""
-            + html
-            + "\n</body>\n</html>\n",
+<div class=\"note\">Графики обновляются без перезагрузки страницы. Выбор каналов и дополнительных графиков выполняется в окне приложения.</div>
+<div id=\"graph\"></div>
+<script>
+const dataUrl = {json.dumps(data_uri)};
+let initialized = false;
+async function updateGraph() {{
+  try {{
+    const response = await fetch(dataUrl + '?t=' + Date.now());
+    const figure = await response.json();
+    const config = {{responsive: true, scrollZoom: true, displaylogo: false}};
+    if (!initialized) {{
+      Plotly.newPlot('graph', figure.data, figure.layout, config);
+      initialized = true;
+    }} else {{
+      Plotly.react('graph', figure.data, figure.layout, config);
+    }}
+  }} catch (error) {{
+    console.error(error);
+  }}
+}}
+updateGraph();
+setInterval(updateGraph, 2000);
+</script>
+</body>
+</html>
+""",
             encoding="utf-8",
         )
+
+    def _draw_graphs(self) -> None:
+        if not self.plotly_graph_opened:
+            return
+        if go is None or make_subplots is None or plotly_plot is None:
+            return
+        self.plotly_data_path.write_text(self._plotly_figure_json(), encoding="utf-8")
 
     def _schedule_graph_refresh(self) -> None:
         if not self.plotly_graph_opened:
