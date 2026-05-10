@@ -337,6 +337,7 @@ class TimescaleMeasurementWriter:
         self.disabled_reason = ""
         self.database_ready = False
         self.inserted_rows = 0
+        self.storage_mode = "PostgreSQL"
         if not self.enabled:
             self.disabled_reason = "psycopg2 is not installed; DB saving is disabled"
 
@@ -396,16 +397,68 @@ class TimescaleMeasurementWriter:
         self._ensure_database()
         return psycopg2.connect(**self.connection_kwargs)
 
+    def _connection_closed(self, connection) -> bool:
+        return connection is None or bool(getattr(connection, "closed", True))
+
+    def _safe_rollback(self, connection) -> None:
+        if self._connection_closed(connection):
+            return
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+
+    def _safe_close(self, connection) -> None:
+        if connection is None:
+            return
+        try:
+            connection.close()
+        except Exception:
+            pass
+
     def _ensure_schema(self, connection) -> None:
         if self.schema_ready:
             return
+        timescaledb_available = False
         try:
             with connection.cursor() as cursor:
-                cursor.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
+                cursor.execute("SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb'")
+                timescaledb_available = cursor.fetchone() is not None
             connection.commit()
         except Exception as exc:
-            connection.rollback()
-            self.log_callback(f"TimescaleDB extension check skipped: {exc}")
+            self._safe_rollback(connection)
+            if self._connection_closed(connection):
+                raise
+            self.log_callback(f"TimescaleDB availability check skipped: {exc}")
+
+        if timescaledb_available:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
+                connection.commit()
+            except Exception as exc:
+                self._safe_rollback(connection)
+                if self._connection_closed(connection):
+                    raise
+                timescaledb_available = False
+                self.log_callback(f"TimescaleDB extension enable skipped: {exc}")
+        else:
+            self.log_callback("TimescaleDB extension is not installed on this PostgreSQL server; saving to a regular table")
+
+        if timescaledb_available:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT to_regproc('create_hypertable') IS NOT NULL")
+                    timescaledb_available = bool(cursor.fetchone()[0])
+                connection.commit()
+            except Exception as exc:
+                self._safe_rollback(connection)
+                if self._connection_closed(connection):
+                    raise
+                timescaledb_available = False
+                self.log_callback(f"TimescaleDB function check skipped: {exc}")
+
+        self.storage_mode = "TimescaleDB" if timescaledb_available else "PostgreSQL"
 
         with connection.cursor() as cursor:
             cursor.execute(
@@ -436,17 +489,26 @@ class TimescaleMeasurementWriter:
                 f"ON {DB_TABLE_NAME} (global_channel, time DESC)"
             )
         connection.commit()
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    f"SELECT create_hypertable('{DB_TABLE_NAME}', 'time', if_not_exists => TRUE)"
-                )
-            connection.commit()
-        except Exception as exc:
-            connection.rollback()
-            self.log_callback(f"Timescale hypertable setup skipped: {exc}")
+
+        if timescaledb_available:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"SELECT create_hypertable('{DB_TABLE_NAME}', 'time', if_not_exists => TRUE)"
+                    )
+                connection.commit()
+            except Exception as exc:
+                self._safe_rollback(connection)
+                if self._connection_closed(connection):
+                    raise
+                self.storage_mode = "PostgreSQL"
+                self.log_callback(f"Timescale hypertable setup skipped; saving to a regular table: {exc}")
+
         self.schema_ready = True
-        self.log_callback(f"TimescaleDB saving enabled: {self.connection_kwargs['host']}:{self.connection_kwargs['port']}/{self.connection_kwargs['dbname']}")
+        self.log_callback(
+            f"{self.storage_mode} saving enabled: "
+            f"{self.connection_kwargs['host']}:{self.connection_kwargs['port']}/{self.connection_kwargs['dbname']}"
+        )
 
     def _insert_batch(self, connection, batch: list[TelemetryMeasurement]) -> None:
         if not batch:
@@ -488,7 +550,7 @@ class TimescaleMeasurementWriter:
             )
         connection.commit()
         self.inserted_rows += len(batch)
-        self.log_callback(f"TimescaleDB saved {len(batch)} row(s), total {self.inserted_rows}")
+        self.log_callback(f"{self.storage_mode} saved {len(batch)} row(s), total {self.inserted_rows}")
 
     def _run(self) -> None:
         connection = None
@@ -511,33 +573,28 @@ class TimescaleMeasurementWriter:
                 continue
 
             try:
-                if connection is None or connection.closed:
+                if self._connection_closed(connection):
                     connection = self._connect()
                     self.schema_ready = False
                 self._ensure_schema(connection)
+                if self._connection_closed(connection):
+                    raise RuntimeError("database connection closed before insert")
                 self._insert_batch(connection, batch)
                 batch.clear()
             except Exception as exc:
-                if connection is not None:
-                    try:
-                        connection.rollback()
-                        connection.close()
-                    except Exception:
-                        pass
-                    connection = None
+                self._safe_rollback(connection)
+                self._safe_close(connection)
+                connection = None
+                self.schema_ready = False
                 now = time.monotonic()
                 if now - last_log > 10:
-                    self.log_callback(f"TimescaleDB save error: {exc}")
+                    self.log_callback(f"{self.storage_mode} save error: {exc}")
                     last_log = now
 
             if should_stop:
                 break
 
-        if connection is not None:
-            try:
-                connection.close()
-            except Exception:
-                pass
+        self._safe_close(connection)
 
 
 def _default_sensor_settings() -> list[list[SensorSettings]]:
