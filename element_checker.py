@@ -300,6 +300,23 @@ def decode_ushort(data: bytes) -> int:
     return int.from_bytes(data, byteorder="big", signed=False)
 
 
+def load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    try:
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception:
+        pass
+
+
 class TimescaleMeasurementWriter:
     def __init__(self, log_callback) -> None:
         self.log_callback = log_callback
@@ -798,6 +815,7 @@ class ElementCheckerApp(tk.Tk):
         self.current_measurement_row: dict[str, object] | None = None
         self.measurement_segment_start: datetime | None = None
         self.measurement_recording = False
+        load_env_file(Path(__file__).with_name(".env"))
         self.db_writer = TimescaleMeasurementWriter(lambda message: self.ui_queue.put(("log", message)))
         self.db_writer.start()
 

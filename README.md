@@ -24,7 +24,7 @@ Default database settings:
 - host: `localhost`
 - port: `5432`
 - user: `postgres`
-- password: `sput-54`
+- password: `pass`
 
 Override them with environment variables:
 
@@ -33,8 +33,10 @@ $env:ELEMER_DB_NAME="elemer_tvi"
 $env:ELEMER_DB_HOST="localhost"
 $env:ELEMER_DB_PORT="5432"
 $env:ELEMER_DB_USER="postgres"
-$env:ELEMER_DB_PASSWORD="sput-54"
+$env:ELEMER_DB_PASSWORD="pass"
 ```
+
+The app also reads the same settings from local `.env` in the application folder. Keep real passwords in `.env`; use `.env.example` as a template.
 
 ## Run
 
