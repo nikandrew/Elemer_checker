@@ -318,6 +318,8 @@ class TimescaleMeasurementWriter:
         self.flush_seconds = max(0.2, float(os.getenv("ELEMER_DB_FLUSH_SECONDS", "2")))
         self.schema_ready = False
         self.disabled_reason = ""
+        self.database_ready = False
+        self.inserted_rows = 0
         if not self.enabled:
             self.disabled_reason = "psycopg2 is not installed; DB saving is disabled"
 
@@ -327,12 +329,19 @@ class TimescaleMeasurementWriter:
             return
         if self.thread is not None and self.thread.is_alive():
             return
+        self.log_callback(
+            "TimescaleDB writer starting: "
+            f"{self.connection_kwargs['host']}:{self.connection_kwargs['port']}/{self.connection_kwargs['dbname']} "
+            f"user={self.connection_kwargs['user']}"
+        )
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
     def enqueue(self, measurement: TelemetryMeasurement) -> None:
         if self.enabled:
             self.queue.put(measurement)
+        elif self.disabled_reason:
+            self.log_callback(self.disabled_reason)
 
     def close(self) -> None:
         if not self.enabled:
@@ -342,7 +351,32 @@ class TimescaleMeasurementWriter:
         if self.thread is not None and self.thread.is_alive():
             self.thread.join(timeout=5)
 
+    def _ensure_database(self) -> None:
+        if self.database_ready:
+            return
+        dbname = self.connection_kwargs["dbname"]
+        maintenance_kwargs = dict(self.connection_kwargs)
+        maintenance_kwargs["dbname"] = os.getenv("ELEMER_DB_MAINTENANCE_DB", "postgres")
+        connection = None
+        try:
+            connection = psycopg2.connect(**maintenance_kwargs)
+            connection.autocommit = True
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s", (dbname,))
+                exists = cursor.fetchone() is not None
+                if not exists:
+                    safe_dbname = str(dbname).replace('"', '""')
+                    cursor.execute(f'CREATE DATABASE "{safe_dbname}"')
+                    self.log_callback(f"PostgreSQL database created: {dbname}")
+            self.database_ready = True
+        except Exception as exc:
+            self.log_callback(f"PostgreSQL database auto-create skipped: {exc}")
+        finally:
+            if connection is not None:
+                connection.close()
+
     def _connect(self):
+        self._ensure_database()
         return psycopg2.connect(**self.connection_kwargs)
 
     def _ensure_schema(self, connection) -> None:
@@ -436,6 +470,8 @@ class TimescaleMeasurementWriter:
                 rows,
             )
         connection.commit()
+        self.inserted_rows += len(batch)
+        self.log_callback(f"TimescaleDB saved {len(batch)} row(s), total {self.inserted_rows}")
 
     def _run(self) -> None:
         connection = None
