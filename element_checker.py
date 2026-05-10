@@ -117,6 +117,7 @@ class TelemetryMeasurement:
     channel: int
     sensor_num: str
     sensor_name: str
+    sensor_used: bool
     temperature: float | None
     error_code: int | None
     error_text: str
@@ -474,6 +475,7 @@ class TimescaleMeasurementWriter:
                     global_channel INTEGER NOT NULL,
                     sensor_num TEXT,
                     sensor_name TEXT,
+                    sensor_used BOOLEAN NOT NULL DEFAULT TRUE,
                     temperature DOUBLE PRECISION,
                     measurement_error_code INTEGER,
                     measurement_error_text TEXT,
@@ -489,6 +491,10 @@ class TimescaleMeasurementWriter:
             cursor.execute(
                 f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_NAME}_channel_time "
                 f"ON {DB_TABLE_NAME} (global_channel, time DESC)"
+            )
+            cursor.execute(
+                f"ALTER TABLE {DB_TABLE_NAME} "
+                "ADD COLUMN IF NOT EXISTS sensor_used BOOLEAN NOT NULL DEFAULT TRUE"
             )
         connection.commit()
 
@@ -525,6 +531,7 @@ class TimescaleMeasurementWriter:
                 item.device_index * TELEMETRY_CHANNELS + item.channel,
                 item.sensor_num,
                 item.sensor_name,
+                item.sensor_used,
                 item.temperature,
                 item.error_code,
                 item.error_text,
@@ -544,7 +551,7 @@ class TimescaleMeasurementWriter:
                     f"""
                     INSERT INTO {DB_TABLE_NAME} (
                         time, device_index, device_label, slave_addr, channel, global_channel,
-                        sensor_num, sensor_name, temperature, measurement_error_code,
+                        sensor_num, sensor_name, sensor_used, temperature, measurement_error_code,
                         measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
                         valid, validation_message, raw_response
                     ) VALUES %s
@@ -556,11 +563,11 @@ class TimescaleMeasurementWriter:
                     f"""
                     INSERT INTO {DB_TABLE_NAME} (
                         time, device_index, device_label, slave_addr, channel, global_channel,
-                        sensor_num, sensor_name, temperature, measurement_error_code,
+                        sensor_num, sensor_name, sensor_used, temperature, measurement_error_code,
                         measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
                         valid, validation_message, raw_response
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     """,
                     rows,
@@ -1663,6 +1670,7 @@ class ElementCheckerApp(tk.Tk):
                     channel=channel,
                     sensor_num=sensor.num,
                     sensor_name=sensor.name,
+                    sensor_used=sensor.used,
                     temperature=temperature,
                     error_code=error_code,
                     error_text=MEASUREMENT_ERROR_TEXT.get(error_code, "Unknown" if error_code is not None else ""),
