@@ -15,10 +15,31 @@ Automatic temperature polling is configured in the main window. During automatic
 
 CSV files are written when measurement is stopped or every 10 minutes of automatic operation. File names use `Elemer_<start>_<end>.csv`, where dates are formatted as `HHMM_DDMMYY`. Each CSV row contains one timestamp and columns for all 48 sensors.
 
+During polling, every sensor response is also saved to PostgreSQL/TimescaleDB table `sensor_measurements`.
+The app reads temperature and measurement error from `0520 + 4 * (channel - 1)` and sensor type from `0860 + channel - 1`.
+
+Default database settings:
+
+- database: `elemer_tvi`
+- host: `localhost`
+- port: `5432`
+- user: `postgres`
+- password: empty
+
+Override them with environment variables:
+
+```powershell
+$env:ELEMER_DB_NAME="elemer_tvi"
+$env:ELEMER_DB_HOST="localhost"
+$env:ELEMER_DB_PORT="5432"
+$env:ELEMER_DB_USER="postgres"
+$env:ELEMER_DB_PASSWORD="your_password"
+```
+
 ## Run
 
 ```powershell
-cd c:\soft\TERMU_sxTelemetry\Element_checker
+cd C:\Nikitin\Soft\Elemer_checker
 python -m pip install -r requirements.txt
 python element_checker.py
 ```

@@ -11,6 +11,7 @@ import csv
 import tempfile
 import webbrowser
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from dataclasses import dataclass
 from dataclasses import asdict
@@ -35,6 +36,13 @@ except ImportError:  # pragma: no cover - shown in UI at runtime
     get_plotlyjs = None
     make_subplots = None
 
+try:
+    import psycopg2
+    from psycopg2.extras import execute_values
+except ImportError:  # pragma: no cover - DB saving is disabled at runtime
+    psycopg2 = None
+    execute_values = None
+
 FUNCTIONS = {
     "01 - Read Coils": 0x01,
     "02 - Read Discrete Inputs": 0x02,
@@ -57,12 +65,16 @@ EXCEPTION_CODES = {
 READ_FUNCTIONS = {0x01, 0x02, 0x03, 0x04}
 WRITE_SINGLE_FUNCTIONS = {0x05, 0x06}
 TELEMETRY_BASE_ADDRESS = 0x0500
+TELEMETRY_WITH_ERRORS_BASE_ADDRESS = 0x0520
 TELEMETRY_CHANNELS = 16
 TELEMETRY_REGISTERS_PER_CHANNEL = 2
+TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL = 4
+SENSOR_TYPE_BASE_ADDRESS = 0x0860
 DEVICE_COUNT = 3
 SETTINGS_FILE = "element_checker_settings.xlsx"
 CHANNEL_SETTINGS_FILE = "channel_settings.json"
 MEASUREMENTS_DIR = "measurements"
+DB_TABLE_NAME = "sensor_measurements"
 MEASUREMENT_FLUSH_INTERVAL_SECONDS = 10 * 60
 TEMP_LOW_COLOR = "#9fd7ff"
 TEMP_OK_COLOR = "#9fe6a0"
@@ -111,6 +123,79 @@ class SensorSettings:
     calculation_flag: str = ""
     calibration_a: float = 1.0
     calibration_b: float = 0.0
+
+
+@dataclass
+class TelemetryMeasurement:
+    timestamp: datetime
+    device_index: int
+    slave_addr: int
+    channel: int
+    sensor_num: str
+    sensor_name: str
+    temperature: float | None
+    error_code: int | None
+    error_text: str
+    timer_code: int | None
+    sensor_type_code: int | None
+    sensor_type_text: str
+    valid: bool
+    validation_message: str
+    raw_response: str
+
+
+MEASUREMENT_ERROR_TEXT = {
+    0: "OK",
+    1: "Sensor circuit break",
+    2: "Division by zero or result is out of range",
+    3: "Nonexistent channel number",
+    4: "Parameter memory read error",
+    5: "Parameter memory write error",
+    6: "No result",
+    8: "Overflow high",
+    10: "Unknown thermocouple cold junction temperature",
+    11: "ADC data read error",
+    12: "Input voltage measurement error",
+    13: "Overflow low",
+    14: "Unknown sensor type",
+    15: "Parameter memory data error",
+    16: "Invalid parameter number",
+    17: "Invalid parameter value",
+    19: "ADC internal error",
+    21: "Unknown secondary processing type",
+    22: "Secondary processing parameter error",
+}
+
+SENSOR_TYPE_TEXT = {
+    0: "Cu85",
+    1: "Cu65",
+    2: "Cu81",
+    3: "Cu61",
+    4: "PtH5",
+    5: "PtH1",
+    6: "Ptb1",
+    7: "ni1",
+    8: "Gr21",
+    9: "Gr23",
+    10: "tc.H",
+    11: "tc.L",
+    12: "tc.S",
+    13: "tc.r",
+    14: "tc.b",
+    15: "tc.A1",
+    16: "tc.A2",
+    17: "tc.A3",
+    18: "tc.J",
+    19: "tc.t",
+    20: "tc.n",
+    21: "tc.E",
+    22: "i05",
+    23: "i020",
+    24: "i420",
+    25: "U100",
+    26: "U75",
+    27: "r320",
+}
 
 
 def modbus_crc(data: bytes) -> bytes:
@@ -207,6 +292,199 @@ def decode_tm5104_temperature(data: bytes) -> float:
     if not math.isfinite(value):
         raise ValueError("Temperature is not finite")
     return value
+
+
+def decode_ushort(data: bytes) -> int:
+    if len(data) != 2:
+        raise ValueError(f"ushort payload must contain 2 bytes, got {len(data)}")
+    return int.from_bytes(data, byteorder="big", signed=False)
+
+
+class TimescaleMeasurementWriter:
+    def __init__(self, log_callback) -> None:
+        self.log_callback = log_callback
+        self.enabled = psycopg2 is not None and execute_values is not None
+        self.queue: queue.Queue[TelemetryMeasurement | None] = queue.Queue()
+        self.stop_event = threading.Event()
+        self.thread: threading.Thread | None = None
+        self.connection_kwargs = {
+            "dbname": os.getenv("ELEMER_DB_NAME", "elemer_tvi"),
+            "user": os.getenv("ELEMER_DB_USER", "postgres"),
+            "password": os.getenv("ELEMER_DB_PASSWORD", ""),
+            "host": os.getenv("ELEMER_DB_HOST", "localhost"),
+            "port": int(os.getenv("ELEMER_DB_PORT", "5432")),
+        }
+        self.batch_size = max(1, int(os.getenv("ELEMER_DB_BATCH_SIZE", "48")))
+        self.flush_seconds = max(0.2, float(os.getenv("ELEMER_DB_FLUSH_SECONDS", "2")))
+        self.schema_ready = False
+        self.disabled_reason = ""
+        if not self.enabled:
+            self.disabled_reason = "psycopg2 is not installed; DB saving is disabled"
+
+    def start(self) -> None:
+        if not self.enabled:
+            self.log_callback(self.disabled_reason)
+            return
+        if self.thread is not None and self.thread.is_alive():
+            return
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+
+    def enqueue(self, measurement: TelemetryMeasurement) -> None:
+        if self.enabled:
+            self.queue.put(measurement)
+
+    def close(self) -> None:
+        if not self.enabled:
+            return
+        self.queue.put(None)
+        self.stop_event.set()
+        if self.thread is not None and self.thread.is_alive():
+            self.thread.join(timeout=5)
+
+    def _connect(self):
+        return psycopg2.connect(**self.connection_kwargs)
+
+    def _ensure_schema(self, connection) -> None:
+        if self.schema_ready:
+            return
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
+            connection.commit()
+        except Exception as exc:
+            connection.rollback()
+            self.log_callback(f"TimescaleDB extension check skipped: {exc}")
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS {DB_TABLE_NAME} (
+                    time TIMESTAMPTZ NOT NULL,
+                    device_index INTEGER NOT NULL,
+                    device_label TEXT NOT NULL,
+                    slave_addr INTEGER NOT NULL,
+                    channel INTEGER NOT NULL,
+                    global_channel INTEGER NOT NULL,
+                    sensor_num TEXT,
+                    sensor_name TEXT,
+                    temperature DOUBLE PRECISION,
+                    measurement_error_code INTEGER,
+                    measurement_error_text TEXT,
+                    timer_code INTEGER,
+                    sensor_type_code INTEGER,
+                    sensor_type_text TEXT,
+                    valid BOOLEAN NOT NULL,
+                    validation_message TEXT,
+                    raw_response TEXT
+                )
+                """
+            )
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_NAME}_channel_time "
+                f"ON {DB_TABLE_NAME} (global_channel, time DESC)"
+            )
+        connection.commit()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"SELECT create_hypertable('{DB_TABLE_NAME}', 'time', if_not_exists => TRUE)"
+                )
+            connection.commit()
+        except Exception as exc:
+            connection.rollback()
+            self.log_callback(f"Timescale hypertable setup skipped: {exc}")
+        self.schema_ready = True
+        self.log_callback(f"TimescaleDB saving enabled: {self.connection_kwargs['host']}:{self.connection_kwargs['port']}/{self.connection_kwargs['dbname']}")
+
+    def _insert_batch(self, connection, batch: list[TelemetryMeasurement]) -> None:
+        if not batch:
+            return
+        rows = [
+            (
+                item.timestamp,
+                item.device_index + 1,
+                f"Elemer {item.device_index + 1}",
+                item.slave_addr,
+                item.channel,
+                item.device_index * TELEMETRY_CHANNELS + item.channel,
+                item.sensor_num,
+                item.sensor_name,
+                item.temperature,
+                item.error_code,
+                item.error_text,
+                item.timer_code,
+                item.sensor_type_code,
+                item.sensor_type_text,
+                item.valid,
+                item.validation_message,
+                item.raw_response,
+            )
+            for item in batch
+        ]
+        with connection.cursor() as cursor:
+            execute_values(
+                cursor,
+                f"""
+                INSERT INTO {DB_TABLE_NAME} (
+                    time, device_index, device_label, slave_addr, channel, global_channel,
+                    sensor_num, sensor_name, temperature, measurement_error_code,
+                    measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
+                    valid, validation_message, raw_response
+                ) VALUES %s
+                """,
+                rows,
+            )
+        connection.commit()
+
+    def _run(self) -> None:
+        connection = None
+        batch: list[TelemetryMeasurement] = []
+        last_log = 0.0
+        while True:
+            try:
+                item = self.queue.get(timeout=self.flush_seconds)
+            except queue.Empty:
+                item = None
+
+            should_stop = item is None and self.stop_event.is_set()
+            if item is not None:
+                batch.append(item)
+
+            if not batch and not should_stop:
+                continue
+
+            if len(batch) < self.batch_size and not should_stop and item is not None:
+                continue
+
+            try:
+                if connection is None or connection.closed:
+                    connection = self._connect()
+                    self.schema_ready = False
+                self._ensure_schema(connection)
+                self._insert_batch(connection, batch)
+                batch.clear()
+            except Exception as exc:
+                if connection is not None:
+                    try:
+                        connection.rollback()
+                        connection.close()
+                    except Exception:
+                        pass
+                    connection = None
+                now = time.monotonic()
+                if now - last_log > 10:
+                    self.log_callback(f"TimescaleDB save error: {exc}")
+                    last_log = now
+
+            if should_stop:
+                break
+
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                pass
 
 
 def _default_sensor_settings() -> list[list[SensorSettings]]:
@@ -415,6 +693,7 @@ class ElementCheckerApp(tk.Tk):
         self.plot_history: list[list[list[tuple[datetime, float]]]] = [
             [[] for _channel in range(TELEMETRY_CHANNELS)] for _device in range(DEVICE_COUNT)
         ]
+        self.sensor_type_cache: list[list[int | None]] = [[None for _channel in range(TELEMETRY_CHANNELS)] for _device in range(DEVICE_COUNT)]
         self.settings_window: tk.Toplevel | None = None
         self.engineering_window: tk.Toplevel | None = None
         self.logs_window: tk.Toplevel | None = None
@@ -483,6 +762,8 @@ class ElementCheckerApp(tk.Tk):
         self.current_measurement_row: dict[str, object] | None = None
         self.measurement_segment_start: datetime | None = None
         self.measurement_recording = False
+        self.db_writer = TimescaleMeasurementWriter(lambda message: self.ui_queue.put(("log", message)))
+        self.db_writer.start()
 
         self.port_var = tk.StringVar(value="COM22")
         self.baud_var = tk.StringVar(value="115200")
@@ -2520,20 +2801,29 @@ setInterval(updateGraph, 2000);
 
         try:
             settings = self._settings(device_index)
-            address = TELEMETRY_BASE_ADDRESS + (channel - 1) * TELEMETRY_REGISTERS_PER_CHANNEL
-            request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
+            address = TELEMETRY_WITH_ERRORS_BASE_ADDRESS + (channel - 1) * TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL
+            request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL)
         except Exception as exc:
             messagebox.showerror("Telemetry settings error", str(exc))
             return
 
         self._set_temperature_label(device_index, channel, "reading")
-        self._send_request(
-            request,
-            9,
-            lambda response, dev=device_index, selected=channel, slave_addr=settings.slave_addr: self._handle_temperature_response(
-                dev, selected, response, slave_addr, False
-            ),
-        )
+
+        def worker() -> None:
+            try:
+                sensor_type_code = self._read_sensor_type_for_worker(settings, device_index, channel)
+                response = self._transact(request, 13)
+                self.ui_queue.put(
+                    (
+                        "telemetry",
+                        f"{device_index}|{channel}|{settings.slave_addr}|0|{sensor_type_code if sensor_type_code is not None else ''}|{response.hex()}",
+                    )
+                )
+            except Exception as exc:
+                self.ui_queue.put(("temp", f"{device_index}|{channel}|error"))
+                self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: Error: {exc}"))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _request_all_temperatures(self, auto: bool = False) -> bool:
         if not self._ensure_connected():
@@ -2558,13 +2848,17 @@ setInterval(updateGraph, 2000);
                         if not self.sensor_settings[device_index][channel - 1].used:
                             continue
                         try:
-                            address = TELEMETRY_BASE_ADDRESS + (channel - 1) * TELEMETRY_REGISTERS_PER_CHANNEL
-                            request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
+                            sensor_type_code = self._read_sensor_type_for_worker(settings, device_index, channel)
+                            address = TELEMETRY_WITH_ERRORS_BASE_ADDRESS + (channel - 1) * TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL
+                            request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL)
                             self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
-                            response = self._transact(request, 9)
+                            response = self._transact(request, 13)
                             save_to_csv = 1 if auto else 0
                             self.ui_queue.put(
-                                ("telemetry", f"{device_index}|{channel}|{settings.slave_addr}|{save_to_csv}|{response.hex()}")
+                                (
+                                    "telemetry",
+                                    f"{device_index}|{channel}|{settings.slave_addr}|{save_to_csv}|{sensor_type_code if sensor_type_code is not None else ''}|{response.hex()}",
+                                )
                             )
                             time.sleep(max(0.02, settings.scan_rate_ms / 1000 / 10))
                         except Exception as exc:
@@ -2614,11 +2908,17 @@ setInterval(updateGraph, 2000);
                 for device_index, channel in due_channels:
                     settings = settings_by_device[device_index]
                     try:
-                        address = TELEMETRY_BASE_ADDRESS + (channel - 1) * TELEMETRY_REGISTERS_PER_CHANNEL
-                        request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_REGISTERS_PER_CHANNEL)
+                        sensor_type_code = self._read_sensor_type_for_worker(settings, device_index, channel)
+                        address = TELEMETRY_WITH_ERRORS_BASE_ADDRESS + (channel - 1) * TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL
+                        request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL)
                         self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
-                        response = self._transact(request, 9)
-                        self.ui_queue.put(("telemetry", f"{device_index}|{channel}|{settings.slave_addr}|1|{response.hex()}"))
+                        response = self._transact(request, 13)
+                        self.ui_queue.put(
+                            (
+                                "telemetry",
+                                f"{device_index}|{channel}|{settings.slave_addr}|1|{sensor_type_code if sensor_type_code is not None else ''}|{response.hex()}",
+                            )
+                        )
                         time.sleep(max(0.02, settings.scan_rate_ms / 1000 / 10))
                     except Exception as exc:
                         self.ui_queue.put(("temp", f"{device_index}|{channel}|error"))
@@ -2628,6 +2928,23 @@ setInterval(updateGraph, 2000);
 
         threading.Thread(target=worker, daemon=True).start()
         return True
+
+    def _read_sensor_type_for_worker(self, settings: PortSettings, device_index: int, channel: int) -> int | None:
+        cached = self.sensor_type_cache[device_index][channel - 1]
+        if cached is not None:
+            return cached
+
+        address = SENSOR_TYPE_BASE_ADDRESS + (channel - 1)
+        request = build_request(settings.slave_addr, 0x03, address, 1)
+        response = self._transact(request, 7)
+        result = validate_read_response(response, settings.slave_addr, 0x03, 2)
+        if not result.valid:
+            self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: sensor type read failed - {result.message}"))
+            return None
+
+        sensor_type_code = decode_ushort(result.data)
+        self.sensor_type_cache[device_index][channel - 1] = sensor_type_code
+        return sensor_type_code
 
     def _send_request(self, request: bytes, expected_size: int, callback) -> None:
         if not self._ensure_connected():
@@ -2683,34 +3000,88 @@ setInterval(updateGraph, 2000);
         response: bytes,
         slave_addr: int,
         save_to_csv: bool,
+        sensor_type_code: int | None,
     ) -> None:
+        timestamp = datetime.now(timezone.utc)
+        sensor = self.sensor_settings[device_index][channel - 1]
+        raw_response = format_hex(response) if response else ""
+        sensor_type_text = SENSOR_TYPE_TEXT.get(sensor_type_code, "Unknown" if sensor_type_code is not None else "")
+
+        def save_db(
+            temperature: float | None,
+            error_code: int | None,
+            timer_code: int | None,
+            valid: bool,
+            validation_message: str,
+        ) -> None:
+            self.db_writer.enqueue(
+                TelemetryMeasurement(
+                    timestamp=timestamp,
+                    device_index=device_index,
+                    slave_addr=slave_addr,
+                    channel=channel,
+                    sensor_num=sensor.num,
+                    sensor_name=sensor.name,
+                    temperature=temperature,
+                    error_code=error_code,
+                    error_text=MEASUREMENT_ERROR_TEXT.get(error_code, "Unknown" if error_code is not None else ""),
+                    timer_code=timer_code,
+                    sensor_type_code=sensor_type_code,
+                    sensor_type_text=sensor_type_text,
+                    valid=valid,
+                    validation_message=validation_message,
+                    raw_response=raw_response,
+                )
+            )
+
         try:
-            result = validate_read_response(response, slave_addr, 0x03, 4)
+            result = validate_read_response(response, slave_addr, 0x03, 8)
             if not result.valid:
                 self._set_temperature_label(device_index, channel, "invalid")
                 self._set_temperature_color(device_index, channel, None)
                 self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {result.message}")
                 self._append_log(f"Device {device_index + 1}, sensor {channel}: invalid response - {result.message}")
+                save_db(None, None, None, False, result.message)
                 return
 
-            temperature = decode_tm5104_temperature(result.data)
+            temperature = decode_tm5104_temperature(result.data[:4])
+            error_code = decode_ushort(result.data[4:6])
+            timer_code = decode_ushort(result.data[6:8])
+            measurement_valid = error_code == 0
             history = self.temperature_history[device_index][channel - 1]
             history.append(temperature)
             del history[:-10]
             plot_history = self.plot_history[device_index][channel - 1]
             plot_history.append((datetime.now(), temperature))
             del plot_history[:-5000]
-            self._set_temperature_label(device_index, channel, f"{temperature:.1f} C")
-            self._set_temperature_color(device_index, channel, temperature)
-            self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {temperature:.2f} C")
-            self._append_log(f"Device {device_index + 1}, sensor {channel}: valid, temperature = {temperature:.3f} C")
-            if save_to_csv:
+
+            if measurement_valid:
+                self._set_temperature_label(device_index, channel, f"{temperature:.1f} C")
+                self._set_temperature_color(device_index, channel, temperature)
+                self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {temperature:.2f} C")
+                self._append_log(
+                    f"Device {device_index + 1}, sensor {channel}: valid, temperature = {temperature:.3f} C, "
+                    f"sensor type = {sensor_type_code if sensor_type_code is not None else 'unknown'} {sensor_type_text}".rstrip()
+                )
+            else:
+                error_text = MEASUREMENT_ERROR_TEXT.get(error_code, "Unknown")
+                self._set_temperature_label(device_index, channel, f"err {error_code}")
+                self._set_temperature_color(device_index, channel, None)
+                self.status_var.set(f"Device {device_index + 1}, sensor {channel}: measurement error {error_code}")
+                self._append_log(
+                    f"Device {device_index + 1}, sensor {channel}: measurement error {error_code} ({error_text}), "
+                    f"temperature payload = {temperature:.3f} C"
+                )
+
+            save_db(temperature, error_code, timer_code, measurement_valid, "valid" if measurement_valid else f"measurement error {error_code}")
+            if save_to_csv and measurement_valid:
                 self._record_measurement(device_index, channel, temperature)
         except Exception as exc:
             self._set_temperature_label(device_index, channel, "error")
             self._set_temperature_color(device_index, channel, None)
             self.status_var.set(f"Device {device_index + 1}, sensor {channel}: decode error")
             self._append_log(f"Device {device_index + 1}, sensor {channel}: decode error - {exc}")
+            save_db(None, None, None, False, f"decode error: {exc}")
 
     def _ensure_connected(self) -> bool:
         if not self.serial_port or not self.serial_port.is_open:
@@ -2816,13 +3187,15 @@ setInterval(updateGraph, 2000);
                 channel = int(channel_text)
                 self._set_temperature_label(int(device_text), channel, label)
             elif kind == "telemetry":
-                device_text, channel_text, slave_text, save_text, response_hex = value.split("|", 4)
+                device_text, channel_text, slave_text, save_text, sensor_type_text, response_hex = value.split("|", 5)
+                sensor_type_code = int(sensor_type_text) if sensor_type_text else None
                 self._handle_temperature_response(
                     int(device_text),
                     int(channel_text),
                     bytes.fromhex(response_hex),
                     int(slave_text),
                     save_text == "1",
+                    sensor_type_code,
                 )
             elif kind == "poll_done":
                 self.temperature_poll_running = False
@@ -2845,6 +3218,7 @@ setInterval(updateGraph, 2000);
     def _on_close(self) -> None:
         self._close_graphs_window()
         self._disconnect()
+        self.db_writer.close()
         if self.settings_window is not None and self.settings_window.winfo_exists():
             self.settings_window.destroy()
         if self.engineering_window is not None and self.engineering_window.winfo_exists():
