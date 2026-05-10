@@ -4,16 +4,14 @@ Python/Tkinter utility for Modbus RTU requests and TM5104 telemetry.
 
 The main window contains connection controls, status, and three compact TM5104 telemetry panels. Port settings, shared Modbus settings, and the three device slave addresses are configured from the Settings window.
 
-Logs are shown in a separate Logs window. Live temperature plots are shown in a separate Graphs window with six small selectable graphs and one combined graph with selectable sensor series.
+Logs are shown in a separate Logs window.
 
-The main window also has an Engineering menu. It contains 48 channel buttons grouped by Elemer device and an expandable editor for channel activity, naming, polling, graph, zone, limit, line, and calculation settings.
+The main window also has an Engineering menu. It contains 48 channel buttons grouped by Elemer device and an expandable editor for channel activity, naming, polling, zone, limit, calibration, and calculation settings.
 Engineering channel parameters are saved to `channel_settings.json` after confirmation.
 
 On startup the app reads `element_checker_settings.xlsx` from the repository folder. Sensor names are taken from `Name`; sensors where `Used` is not `1` are disabled. `Tmin` and `Tmax` define the cell indicator color: blue below minimum, green in range, red above maximum.
 
-Automatic temperature polling is configured in the main window. During automatic polling each active sensor is polled according to its channel polling period from the Engineering menu. Valid temperature measurements are buffered and saved as CSV files in `measurements`.
-
-CSV files are written when measurement is stopped or every 10 minutes of automatic operation. File names use `Elemer_<start>_<end>.csv`, where dates are formatted as `HHMM_DDMMYY`. Each CSV row contains one timestamp and columns for all 48 sensors.
+Automatic temperature polling is configured in the main window. During automatic polling each active sensor is polled according to its channel polling period from the Engineering menu.
 
 During polling, every sensor response is also saved to PostgreSQL/TimescaleDB table `sensor_measurements`.
 The app reads temperature and measurement error from `0520 + 4 * (channel - 1)` and sensor type from `0860 + channel - 1`.
@@ -48,9 +46,9 @@ python element_checker.py
 
 Each device panel has 16 telemetry buttons. Buttons read sensor channels from holding registers:
 
-- Sensor 1: `0500`, quantity `2`
-- Sensor 2: `0502`, quantity `2`
+- Sensor 1: `0520`, quantity `4`
+- Sensor 2: `0524`, quantity `4`
 - ...
-- Sensor 16: `051E`, quantity `2`
+- Sensor 16: `055C`, quantity `4`
 
-Each sensor value is decoded as big-endian IEEE 754 `float`.
+Each response contains big-endian IEEE 754 `float` temperature, measurement error code, and timer code.
