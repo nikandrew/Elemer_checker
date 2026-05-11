@@ -6,10 +6,12 @@ The main window contains connection controls, status, and three compact TM5104 t
 
 Logs are shown in a separate Logs window.
 
-The main window also has an Engineering menu. It contains 48 channel buttons grouped by Elemer device and an expandable editor for channel activity, naming, polling, zone, limit, calibration, and calculation settings.
+The main window also has an Engineering menu. It contains 48 channel buttons grouped by Elemer device and an expandable editor for channel activity, naming, polling, zone, limit setpoints, calibration, and calculation settings.
 Engineering channel parameters are saved to `channel_settings.json` after confirmation.
 
 On startup the app reads `element_checker_settings.xlsx` from the repository folder. Sensor names are taken from `Name`; sensors where `Used` is not `1` are disabled. `Tmin` and `Tmax` define the cell indicator color: blue below minimum, green in range, red above maximum.
+
+Channel limits are stored as separate JSON fields: `tmin`, `tmax`, `twar`, `tcrit`, and `temerg`. They are also written to PostgreSQL columns `limit_tmin`, `limit_tmax`, `limit_twar`, `limit_tcrit`, and `limit_temerg` with every measurement row.
 
 Automatic temperature polling is configured in the main window. During automatic polling each active sensor is polled according to its channel polling period from the Engineering menu.
 
