@@ -68,6 +68,8 @@ DEVICE_COUNT = 3
 SETTINGS_FILE = "element_checker_settings.xlsx"
 CHANNEL_SETTINGS_FILE = "channel_settings.json"
 DB_TABLE_NAME = "sensor_measurements"
+SENSOR_KIND_TEMPERATURE = 1
+SENSOR_KIND_HEAT_FLUX = 2
 TEMP_LOW_COLOR = "#9fd7ff"
 TEMP_OK_COLOR = "#9fe6a0"
 TEMP_HIGH_COLOR = "#ff9b9b"
@@ -96,7 +98,6 @@ class SensorSettings:
     num: str
     name: str
     used: bool
-    meter_channel: int = 1
     tmin: float | None = None
     tmax: float | None = None
     twar: float | None = None
@@ -104,9 +105,6 @@ class SensorSettings:
     temerg: float | None = None
     sensor_type: str = "Термодатчик"
     poll_period_s: float = 1.0
-    panel_zone: str = ""
-    sweep_linked: bool = False
-    calculation_flag: str = ""
     calibration_a: float = 1.0
     calibration_b: float = 0.0
 
@@ -126,6 +124,7 @@ class TelemetryMeasurement:
     limit_tcrit: float | None
     limit_temerg: float | None
     color_level: int
+    sensor_kind_code: int
     temperature: float | None
     error_code: int | None
     error_text: str
@@ -490,6 +489,7 @@ class TimescaleMeasurementWriter:
                     limit_tcrit DOUBLE PRECISION,
                     limit_temerg DOUBLE PRECISION,
                     color_level INTEGER NOT NULL DEFAULT -1,
+                    sensor_kind_code INTEGER NOT NULL DEFAULT 1,
                     temperature DOUBLE PRECISION,
                     measurement_error_code INTEGER,
                     measurement_error_text TEXT,
@@ -518,6 +518,10 @@ class TimescaleMeasurementWriter:
             cursor.execute(
                 f"ALTER TABLE {DB_TABLE_NAME} "
                 "ADD COLUMN IF NOT EXISTS color_level INTEGER NOT NULL DEFAULT -1"
+            )
+            cursor.execute(
+                f"ALTER TABLE {DB_TABLE_NAME} "
+                "ADD COLUMN IF NOT EXISTS sensor_kind_code INTEGER NOT NULL DEFAULT 1"
             )
         connection.commit()
 
@@ -561,6 +565,7 @@ class TimescaleMeasurementWriter:
                 item.limit_tcrit,
                 item.limit_temerg,
                 item.color_level,
+                item.sensor_kind_code,
                 item.temperature,
                 item.error_code,
                 item.error_text,
@@ -581,7 +586,8 @@ class TimescaleMeasurementWriter:
                     INSERT INTO {DB_TABLE_NAME} (
                         time, device_index, device_label, slave_addr, channel, global_channel,
                         sensor_num, sensor_name, sensor_used, limit_tmin, limit_tmax,
-                        limit_twar, limit_tcrit, limit_temerg, color_level, temperature, measurement_error_code,
+                        limit_twar, limit_tcrit, limit_temerg, color_level, sensor_kind_code,
+                        temperature, measurement_error_code,
                         measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
                         valid, validation_message, raw_response
                     ) VALUES %s
@@ -594,11 +600,12 @@ class TimescaleMeasurementWriter:
                     INSERT INTO {DB_TABLE_NAME} (
                         time, device_index, device_label, slave_addr, channel, global_channel,
                         sensor_num, sensor_name, sensor_used, limit_tmin, limit_tmax,
-                        limit_twar, limit_tcrit, limit_temerg, color_level, temperature, measurement_error_code,
+                        limit_twar, limit_tcrit, limit_temerg, color_level, sensor_kind_code,
+                        temperature, measurement_error_code,
                         measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
                         valid, validation_message, raw_response
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     """,
                     rows,
@@ -655,7 +662,7 @@ class TimescaleMeasurementWriter:
 def _default_sensor_settings() -> list[list[SensorSettings]]:
     return [
         [
-            SensorSettings(num=f"{device + 1}_{channel}", name=str(channel), used=True, meter_channel=channel)
+            SensorSettings(num=f"{device + 1}_{channel}", name=str(channel), used=True)
             for channel in range(1, TELEMETRY_CHANNELS + 1)
         ]
         for device in range(DEVICE_COUNT)
@@ -732,6 +739,10 @@ def color_level_for_measurement(temperature: float | None, valid: bool, sensor: 
     return 1
 
 
+def sensor_kind_code(sensor_type: str) -> int:
+    return SENSOR_KIND_HEAT_FLUX if "теплового" in sensor_type.lower() else SENSOR_KIND_TEMPERATURE
+
+
 def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | None]:
     sensors = _default_sensor_settings()
     if not path.exists():
@@ -786,7 +797,6 @@ def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | 
                 num=num,
                 name=name,
                 used=used,
-                meter_channel=channel,
                 tmin=tmin,
                 tmax=tmax,
             )
@@ -1249,34 +1259,26 @@ class ElementCheckerApp(tk.Tk):
         self._refresh_engineering_selection()
         self.engineering_detail_frame.configure(text=f"Элемер №{device_index + 1}, канал {channel}")
         self.engineering_vars = {
-            "meter_channel": tk.StringVar(value=str(sensor.meter_channel)),
             "name": tk.StringVar(value=sensor.name),
             "sensor_type": tk.StringVar(value=sensor.sensor_type),
             "used": tk.StringVar(value="Активен" if sensor.used else "Выключен"),
             "poll_period_s": tk.StringVar(value=str(sensor.poll_period_s).replace(".", ",")),
-            "panel_zone": tk.StringVar(value=sensor.panel_zone),
-            "sweep_linked": tk.StringVar(value="Привязан" if sensor.sweep_linked else "Нет"),
             "tmin": tk.StringVar(value="" if sensor.tmin is None else str(sensor.tmin).replace(".", ",")),
             "tmax": tk.StringVar(value="" if sensor.tmax is None else str(sensor.tmax).replace(".", ",")),
             "twar": tk.StringVar(value="" if sensor.twar is None else str(sensor.twar).replace(".", ",")),
             "tcrit": tk.StringVar(value="" if sensor.tcrit is None else str(sensor.tcrit).replace(".", ",")),
             "temerg": tk.StringVar(value="" if sensor.temerg is None else str(sensor.temerg).replace(".", ",")),
-            "calculation_flag": tk.StringVar(value=sensor.calculation_flag),
             "calibration_a": tk.StringVar(value=str(sensor.calibration_a).replace(".", ",")),
             "calibration_b": tk.StringVar(value=str(sensor.calibration_b).replace(".", ",")),
         }
 
         fields = [
-            ("Номер канала измерителя", "meter_channel", "entry"),
             ("Наименование канала", "name", "entry"),
             ("Тип датчика / назначение", "sensor_type", ("Термодатчик", "Датчик теплового потока")),
             ("Признак активности", "used", ("Активен", "Выключен")),
             ("Период опроса, с", "poll_period_s", "entry"),
-            ("Панель / группа / зона", "panel_zone", "entry"),
-            ("Поле развертки", "sweep_linked", ("Привязан", "Нет")),
             ("Допустимые пределы", "limits", "limits"),
             ("Линейная калибровка", "calibration", "calibration"),
-            ("Участие в расчетах", "calculation_flag", "entry"),
         ]
 
         for row, (label, key, editor) in enumerate(fields):
@@ -1357,9 +1359,6 @@ class ElementCheckerApp(tk.Tk):
             poll_period_s = float(self.engineering_vars["poll_period_s"].get().replace(",", "."))
             if not 0.5 <= poll_period_s <= 2.0:
                 raise ValueError("Polling period must be from 0.5 to 2 seconds")
-            meter_channel = int(self.engineering_vars["meter_channel"].get())
-            if meter_channel <= 0:
-                raise ValueError("Meter channel must be a positive integer")
             calibration_a = float(self.engineering_vars["calibration_a"].get().replace(",", "."))
             calibration_b = float(self.engineering_vars["calibration_b"].get().replace(",", "."))
             tmin = parse_limit("tmin")
@@ -1378,21 +1377,16 @@ class ElementCheckerApp(tk.Tk):
         ):
             return
 
-        sensor.meter_channel = meter_channel
         sensor.name = self.engineering_vars["name"].get().strip() or sensor.num
         sensor.sensor_type = self.engineering_vars["sensor_type"].get()
         used_value = self.engineering_vars["used"].get()
         sensor.used = used_value == "Активен" or used_value.startswith("Рђ")
         sensor.poll_period_s = poll_period_s
-        sensor.panel_zone = self.engineering_vars["panel_zone"].get().strip()
-        sweep_value = self.engineering_vars["sweep_linked"].get()
-        sensor.sweep_linked = sweep_value == "Привязан" or sweep_value.startswith("Рџ")
         sensor.tmin = tmin
         sensor.tmax = tmax
         sensor.twar = twar
         sensor.tcrit = tcrit
         sensor.temerg = temerg
-        sensor.calculation_flag = self.engineering_vars["calculation_flag"].get().strip()
         sensor.calibration_a = calibration_a
         sensor.calibration_b = calibration_b
         try:
@@ -1760,6 +1754,7 @@ class ElementCheckerApp(tk.Tk):
             validation_message: str,
         ) -> None:
             color_level = color_level_for_measurement(temperature, valid, sensor)
+            kind_code = sensor_kind_code(sensor.sensor_type)
             self.db_writer.enqueue(
                 TelemetryMeasurement(
                     timestamp=timestamp,
@@ -1775,6 +1770,7 @@ class ElementCheckerApp(tk.Tk):
                     limit_tcrit=sensor.tcrit,
                     limit_temerg=sensor.temerg,
                     color_level=color_level,
+                    sensor_kind_code=kind_code,
                     temperature=temperature,
                     error_code=error_code,
                     error_text=MEASUREMENT_ERROR_TEXT.get(error_code, "Unknown" if error_code is not None else ""),
