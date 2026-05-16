@@ -125,6 +125,7 @@ class TelemetryMeasurement:
     limit_twar: float | None
     limit_tcrit: float | None
     limit_temerg: float | None
+    color_level: int
     temperature: float | None
     error_code: int | None
     error_text: str
@@ -488,6 +489,7 @@ class TimescaleMeasurementWriter:
                     limit_twar DOUBLE PRECISION,
                     limit_tcrit DOUBLE PRECISION,
                     limit_temerg DOUBLE PRECISION,
+                    color_level INTEGER NOT NULL DEFAULT -1,
                     temperature DOUBLE PRECISION,
                     measurement_error_code INTEGER,
                     measurement_error_text TEXT,
@@ -513,6 +515,10 @@ class TimescaleMeasurementWriter:
                     f"ALTER TABLE {DB_TABLE_NAME} "
                     f"ADD COLUMN IF NOT EXISTS {column_name} DOUBLE PRECISION"
                 )
+            cursor.execute(
+                f"ALTER TABLE {DB_TABLE_NAME} "
+                "ADD COLUMN IF NOT EXISTS color_level INTEGER NOT NULL DEFAULT -1"
+            )
         connection.commit()
 
         if timescaledb_available:
@@ -554,6 +560,7 @@ class TimescaleMeasurementWriter:
                 item.limit_twar,
                 item.limit_tcrit,
                 item.limit_temerg,
+                item.color_level,
                 item.temperature,
                 item.error_code,
                 item.error_text,
@@ -574,7 +581,7 @@ class TimescaleMeasurementWriter:
                     INSERT INTO {DB_TABLE_NAME} (
                         time, device_index, device_label, slave_addr, channel, global_channel,
                         sensor_num, sensor_name, sensor_used, limit_tmin, limit_tmax,
-                        limit_twar, limit_tcrit, limit_temerg, temperature, measurement_error_code,
+                        limit_twar, limit_tcrit, limit_temerg, color_level, temperature, measurement_error_code,
                         measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
                         valid, validation_message, raw_response
                     ) VALUES %s
@@ -587,11 +594,11 @@ class TimescaleMeasurementWriter:
                     INSERT INTO {DB_TABLE_NAME} (
                         time, device_index, device_label, slave_addr, channel, global_channel,
                         sensor_num, sensor_name, sensor_used, limit_tmin, limit_tmax,
-                        limit_twar, limit_tcrit, limit_temerg, temperature, measurement_error_code,
+                        limit_twar, limit_tcrit, limit_temerg, color_level, temperature, measurement_error_code,
                         measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
                         valid, validation_message, raw_response
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     """,
                     rows,
@@ -707,6 +714,22 @@ def _optional_float(value: str) -> float | None:
         return float(value)
     except ValueError:
         return None
+
+
+def color_level_for_measurement(temperature: float | None, valid: bool, sensor: SensorSettings) -> int:
+    if not valid or temperature is None:
+        return -1
+    if sensor.temerg is not None and temperature > sensor.temerg:
+        return 5
+    if sensor.tcrit is not None and temperature > sensor.tcrit:
+        return 4
+    if sensor.twar is not None and temperature > sensor.twar:
+        return 3
+    if sensor.tmax is not None and temperature > sensor.tmax:
+        return 2
+    if sensor.tmin is not None and temperature < sensor.tmin:
+        return 0
+    return 1
 
 
 def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | None]:
@@ -1736,6 +1759,7 @@ class ElementCheckerApp(tk.Tk):
             valid: bool,
             validation_message: str,
         ) -> None:
+            color_level = color_level_for_measurement(temperature, valid, sensor)
             self.db_writer.enqueue(
                 TelemetryMeasurement(
                     timestamp=timestamp,
@@ -1750,6 +1774,7 @@ class ElementCheckerApp(tk.Tk):
                     limit_twar=sensor.twar,
                     limit_tcrit=sensor.tcrit,
                     limit_temerg=sensor.temerg,
+                    color_level=color_level,
                     temperature=temperature,
                     error_code=error_code,
                     error_text=MEASUREMENT_ERROR_TEXT.get(error_code, "Unknown" if error_code is not None else ""),

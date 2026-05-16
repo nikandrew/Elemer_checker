@@ -13,6 +13,18 @@ On startup the app reads `element_checker_settings.xlsx` from the repository fol
 
 Channel limits are stored as separate JSON fields: `tmin`, `tmax`, `twar`, `tcrit`, and `temerg`. They are also written to PostgreSQL columns `limit_tmin`, `limit_tmax`, `limit_twar`, `limit_tcrit`, and `limit_temerg` with every measurement row.
 
+Each measurement row also stores `color_level`:
+
+- `-1`: sensor error, gray
+- `0`: below `limit_tmin`, blue
+- `1`: `limit_tmin` to `limit_tmax`, green
+- `2`: above `limit_tmax`, yellow
+- `3`: above `limit_twar`, orange
+- `4`: above `limit_tcrit`, purple
+- `5`: above `limit_temerg`, red
+
+Empty limit values are ignored when `color_level` is calculated.
+
 Automatic temperature polling is configured in the main window. During automatic polling each active sensor is polled according to its channel polling period from the Engineering menu.
 
 During polling, every sensor response is also saved to PostgreSQL/TimescaleDB table `sensor_measurements`.
