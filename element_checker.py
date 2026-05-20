@@ -1348,7 +1348,10 @@ class ElementCheckerApp(tk.Tk):
 
     def _open_engineering_window(self) -> None:
         if self.engineering_window is not None and self.engineering_window.winfo_exists():
+            self.engineering_window.deiconify()
             self.engineering_window.lift()
+            self.engineering_window.attributes("-topmost", True)
+            self.engineering_window.after_idle(lambda: self.engineering_window.attributes("-topmost", False))
             self.engineering_window.focus_set()
             return
 
