@@ -66,6 +66,8 @@ TELEMETRY_CHANNELS = 16
 TELEMETRY_REGISTERS_PER_CHANNEL = 2
 TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL = 4
 SENSOR_TYPE_BASE_ADDRESS = 0x0860
+INDICATOR_COLOR_BASE_ADDRESS = 0x0850
+INDICATOR_COLOR_AUTO = 1
 DEVICE_COUNT = 3
 SETTINGS_FILE = "element_checker_settings.xlsx"
 CHANNEL_SETTINGS_FILE = "channel_settings.json"
@@ -1686,6 +1688,7 @@ class ElementCheckerApp(tk.Tk):
             return
         device_index, channel = self.engineering_selected
         sensor = self.sensor_settings[device_index][channel - 1]
+        was_used = sensor.used
 
         try:
             def parse_limit(var_name: str) -> float | None:
@@ -1742,6 +1745,39 @@ class ElementCheckerApp(tk.Tk):
                 self.auto_poll_next_due.pop(key, None)
         self.status_var.set(f"Channel saved: Elemer {device_index + 1}, channel {channel}")
         self._append_log(f"Engineering settings saved for Elemer {device_index + 1}, channel {channel}")
+        if not was_used and sensor.used:
+            self._activate_device_sensor_channel(device_index, channel)
+
+    def _activate_device_sensor_channel(self, device_index: int, channel: int) -> None:
+        if not self.serial_port or not self.serial_port.is_open:
+            message = f"Elemer {device_index + 1}, channel {channel}: device activation skipped, COM port is not connected"
+            self.status_var.set(message)
+            self._append_log(message)
+            return
+        if self.auto_poll_var.get():
+            message = f"Elemer {device_index + 1}, channel {channel}: device activation skipped, stop measurement first"
+            self.status_var.set(message)
+            self._append_log(message)
+            return
+
+        try:
+            settings = self._settings(device_index)
+            address = INDICATOR_COLOR_BASE_ADDRESS + channel - 1
+            request = build_request(settings.slave_addr, 0x06, address, INDICATOR_COLOR_AUTO)
+        except Exception as exc:
+            messagebox.showerror("Device activation error", str(exc))
+            return
+
+        def handle_response(response: bytes, dev=device_index, ch=channel, write_request=request) -> None:
+            result = validate_write_single_response(response, write_request)
+            if result.valid:
+                message = f"Elemer {dev + 1}, channel {ch}: device channel activated"
+            else:
+                message = f"Elemer {dev + 1}, channel {ch}: device activation failed - {result.message}"
+            self.status_var.set(message)
+            self._append_log(message)
+
+        self._send_request(request, 8, handle_response)
 
     def _open_logs_window(self) -> None:
         if self.logs_window is not None and self.logs_window.winfo_exists():
