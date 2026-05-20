@@ -68,8 +68,20 @@ DEVICE_COUNT = 3
 SETTINGS_FILE = "element_checker_settings.xlsx"
 CHANNEL_SETTINGS_FILE = "channel_settings.json"
 DB_TABLE_NAME = "sensor_measurements"
+DEVICE_BAUD_REGISTER_ADDRESS = 0x0409
+DEVICE_BAUD_CODE_TO_RATE = {
+    4: 2400,
+    5: 4800,
+    6: 9600,
+    7: 19200,
+    8: 38400,
+    9: 57600,
+    10: 115200,
+}
+DEVICE_BAUD_RATE_TO_CODE = {rate: code for code, rate in DEVICE_BAUD_CODE_TO_RATE.items()}
 SENSOR_KIND_TEMPERATURE = 1
 SENSOR_KIND_HEAT_FLUX = 2
+AUTO_SENSOR_POLL_PERIOD_S = 0.5
 TEMP_LOW_COLOR = "#9fd7ff"
 TEMP_OK_COLOR = "#9fe6a0"
 TEMP_HIGH_COLOR = "#ff9b9b"
@@ -104,7 +116,6 @@ class SensorSettings:
     tcrit: float | None = None
     temerg: float | None = None
     sensor_type: str = "Термодатчик"
-    poll_period_s: float = 1.0
     calibration_a: float = 1.0
     calibration_b: float = 0.0
 
@@ -227,6 +238,11 @@ def build_request(slave_addr: int, function_code: int, start_address: int, quant
     return payload + modbus_crc(payload)
 
 
+def build_read_response_frame(slave_addr: int, function_code: int, data: bytes) -> bytes:
+    payload = bytes([slave_addr, function_code, len(data)]) + data
+    return payload + modbus_crc(payload)
+
+
 def expected_response_size(function_code: int, quantity: int) -> int:
     if function_code in {0x01, 0x02}:
         return 5 + math.ceil(quantity / 8)
@@ -262,6 +278,24 @@ def validate_read_response(response: bytes, slave_addr: int, function_code: int,
         return ModbusResult(False, f"wrong frame length: {len(response)}, expected {expected_frame_len}")
 
     return ModbusResult(True, "valid", response[3 : 3 + expected_data_len])
+
+
+def validate_write_single_response(response: bytes, request: bytes) -> ModbusResult:
+    if not response:
+        return ModbusResult(False, "timeout/no data")
+    if len(response) < 5:
+        return ModbusResult(False, f"too short: {len(response)} byte(s)")
+    if not check_crc(response):
+        return ModbusResult(False, "CRC mismatch")
+    if response[0] != request[0]:
+        return ModbusResult(False, f"wrong slave addr: {response[0]}")
+    if response[1] == request[1] + 0x80:
+        code = response[2]
+        description = EXCEPTION_CODES.get(code, "Unknown exception")
+        return ModbusResult(False, f"Modbus exception {code:02X}: {description}")
+    if response != request:
+        return ModbusResult(False, f"write echo mismatch: {format_hex(response)}")
+    return ModbusResult(True, "valid")
 
 
 def parse_int(value: str, base_name: str) -> int:
@@ -323,12 +357,11 @@ class TimescaleMeasurementWriter:
             "host": os.getenv("ELEMER_DB_HOST", "localhost"),
             "port": int(os.getenv("ELEMER_DB_PORT", "5432")),
         }
-        self.batch_size = max(1, int(os.getenv("ELEMER_DB_BATCH_SIZE", "48")))
-        self.flush_seconds = max(0.2, float(os.getenv("ELEMER_DB_FLUSH_SECONDS", "2")))
         self.schema_ready = False
         self.disabled_reason = ""
         self.database_ready = False
         self.inserted_rows = 0
+        self.last_insert_log = 0.0
         self.storage_mode = "PostgreSQL"
         if not self.enabled:
             self.disabled_reason = "PostgreSQL driver is not installed; DB saving is disabled"
@@ -356,8 +389,8 @@ class TimescaleMeasurementWriter:
     def close(self) -> None:
         if not self.enabled:
             return
-        self.queue.put(None)
         self.stop_event.set()
+        self.queue.put(None)
         if self.thread is not None and self.thread.is_alive():
             self.thread.join(timeout=5)
 
@@ -612,26 +645,20 @@ class TimescaleMeasurementWriter:
                 )
         connection.commit()
         self.inserted_rows += len(batch)
-        self.log_callback(f"{self.storage_mode} saved {len(batch)} row(s), total {self.inserted_rows}")
+        now = time.monotonic()
+        if now - self.last_insert_log >= 1.0:
+            self.log_callback(f"{self.storage_mode} saved total {self.inserted_rows} row(s)")
+            self.last_insert_log = now
 
     def _run(self) -> None:
         connection = None
-        batch: list[TelemetryMeasurement] = []
         last_log = 0.0
         while True:
-            try:
-                item = self.queue.get(timeout=self.flush_seconds)
-            except queue.Empty:
-                item = None
-
+            item = self.queue.get()
             should_stop = item is None and self.stop_event.is_set()
-            if item is not None:
-                batch.append(item)
-
-            if not batch and not should_stop:
-                continue
-
-            if len(batch) < self.batch_size and not should_stop and item is not None:
+            if item is None:
+                if should_stop:
+                    break
                 continue
 
             try:
@@ -641,8 +668,7 @@ class TimescaleMeasurementWriter:
                 self._ensure_schema(connection)
                 if self._connection_closed(connection):
                     raise RuntimeError("database connection closed before insert")
-                self._insert_batch(connection, batch)
-                batch.clear()
+                self._insert_batch(connection, [item])
             except Exception as exc:
                 self._safe_rollback(connection)
                 self._safe_close(connection)
@@ -652,9 +678,6 @@ class TimescaleMeasurementWriter:
                 if now - last_log > 10:
                     self.log_callback(f"{self.storage_mode} save error: {exc}")
                     last_log = now
-
-            if should_stop:
-                break
 
         self._safe_close(connection)
 
@@ -896,6 +919,9 @@ class ElementCheckerApp(tk.Tk):
         self.stopbits_var = tk.StringVar(value="2")
         self.slave_vars = [tk.StringVar(value=str(index + 2)) for index in range(DEVICE_COUNT)]
         self.selected_device_var = tk.StringVar(value="1")
+        self.device_speed_device_var = tk.StringVar(value="1")
+        self.device_speed_var = tk.StringVar(value="115200")
+        self.device_speed_status_var = tk.StringVar(value="Speed is not checked")
         self.scan_rate_var = tk.StringVar(value="1000")
         self.function_var = tk.StringVar(value="03 - Read Holding Registers")
         self.start_address_var = tk.StringVar(value="0500")
@@ -910,7 +936,7 @@ class ElementCheckerApp(tk.Tk):
         if self.sensor_settings_warning:
             self._append_log(self.sensor_settings_warning)
         self._refresh_expected()
-        self.after(100, self._drain_ui_queue)
+        self.after(20, self._drain_ui_queue)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_ui(self) -> None:
@@ -1150,12 +1176,117 @@ class ElementCheckerApp(tk.Tk):
             row=1, column=6, padx=8, pady=8, sticky="ew"
         )
 
-        ttk.Button(window, text="Close", command=self._close_settings).grid(row=3, column=0, padx=12, pady=(6, 12), sticky="e")
+        speed_frame = ttk.LabelFrame(window, text="Device baud rate")
+        speed_frame.grid(row=3, column=0, padx=12, pady=6, sticky="ew")
+
+        ttk.Label(speed_frame, text="Device").grid(row=0, column=0, padx=8, pady=8, sticky="w")
+        ttk.Combobox(
+            speed_frame,
+            textvariable=self.device_speed_device_var,
+            values=tuple(str(index + 1) for index in range(DEVICE_COUNT)),
+            state="readonly",
+            width=8,
+        ).grid(row=0, column=1, padx=8, pady=8, sticky="ew")
+
+        ttk.Label(speed_frame, text="New baudrate").grid(row=0, column=2, padx=8, pady=8, sticky="w")
+        ttk.Combobox(
+            speed_frame,
+            textvariable=self.device_speed_var,
+            values=tuple(str(rate) for rate in DEVICE_BAUD_RATE_TO_CODE),
+            state="readonly",
+            width=10,
+        ).grid(row=0, column=3, padx=8, pady=8, sticky="ew")
+
+        ttk.Button(speed_frame, text="Check current speed", command=self._check_device_speed).grid(
+            row=1, column=0, columnspan=2, padx=8, pady=8, sticky="ew"
+        )
+        ttk.Button(speed_frame, text="Set device speed", command=self._set_device_speed).grid(
+            row=1, column=2, columnspan=2, padx=8, pady=8, sticky="ew"
+        )
+        ttk.Label(speed_frame, textvariable=self.device_speed_status_var, anchor="w").grid(
+            row=2, column=0, columnspan=4, padx=8, pady=(0, 8), sticky="ew"
+        )
+
+        ttk.Button(window, text="Close", command=self._close_settings).grid(row=4, column=0, padx=12, pady=(6, 12), sticky="e")
 
     def _close_settings(self) -> None:
         if self.settings_window is not None:
             self.settings_window.destroy()
             self.settings_window = None
+
+    def _selected_speed_device_index(self) -> int:
+        device_index = int(self.device_speed_device_var.get()) - 1
+        if not 0 <= device_index < DEVICE_COUNT:
+            raise ValueError(f"Device must be 1..{DEVICE_COUNT}")
+        return device_index
+
+    def _check_device_speed(self) -> None:
+        if self.auto_poll_var.get():
+            messagebox.showwarning("Auto polling is running", "Stop measurement before checking device speed.")
+            return
+        try:
+            device_index = self._selected_speed_device_index()
+            settings = self._settings(device_index)
+            request = build_request(settings.slave_addr, 0x03, DEVICE_BAUD_REGISTER_ADDRESS, 1)
+        except Exception as exc:
+            messagebox.showerror("Speed check error", str(exc))
+            return
+
+        self.device_speed_status_var.set(f"Checking Elemer {device_index + 1} speed...")
+
+        def handle_response(response: bytes, slave_addr=settings.slave_addr, device=device_index) -> None:
+            result = validate_read_response(response, slave_addr, 0x03, 2)
+            if not result.valid:
+                self.device_speed_status_var.set(f"Elemer {device + 1}: speed check failed - {result.message}")
+                return
+            code = decode_ushort(result.data)
+            rate = DEVICE_BAUD_CODE_TO_RATE.get(code)
+            if rate is None:
+                self.device_speed_status_var.set(f"Elemer {device + 1}: unknown speed code {code}")
+                return
+            self.device_speed_var.set(str(rate))
+            self.device_speed_status_var.set(f"Elemer {device + 1}: current speed {rate} bit/s, code {code}")
+
+        self._send_request(request, expected_response_size(0x03, 1), handle_response)
+
+    def _set_device_speed(self) -> None:
+        if self.auto_poll_var.get():
+            messagebox.showwarning("Auto polling is running", "Stop measurement before setting device speed.")
+            return
+        try:
+            device_index = self._selected_speed_device_index()
+            settings = self._settings(device_index)
+            rate = int(self.device_speed_var.get())
+            code = DEVICE_BAUD_RATE_TO_CODE[rate]
+            request = build_request(settings.slave_addr, 0x06, DEVICE_BAUD_REGISTER_ADDRESS, code)
+        except Exception as exc:
+            messagebox.showerror("Speed setup error", str(exc))
+            return
+
+        if not messagebox.askyesno(
+            "Set device speed",
+            f"Set Elemer {device_index + 1} baudrate to {rate} bit/s?\n"
+            "After the command the application COM baudrate will also be switched to this value.",
+            parent=self.settings_window,
+        ):
+            return
+
+        self.device_speed_status_var.set(f"Setting Elemer {device_index + 1} speed to {rate} bit/s...")
+
+        def handle_response(response: bytes, device=device_index, new_rate=rate, write_request=request) -> None:
+            result = validate_write_single_response(response, write_request)
+            if not result.valid:
+                self.device_speed_status_var.set(f"Elemer {device + 1}: speed setup failed - {result.message}")
+                return
+            self.baud_var.set(str(new_rate))
+            if self.serial_port is not None and self.serial_port.is_open:
+                self.serial_port.baudrate = new_rate
+            self.device_speed_status_var.set(
+                f"Elemer {device + 1}: speed set to {new_rate} bit/s; COM port switched to {new_rate}"
+            )
+            self._append_log(f"Elemer {device + 1}: baudrate set to {new_rate} bit/s")
+
+        self._send_request(request, 8, handle_response)
 
     def _engineering_button_text(self, device_index: int, channel: int) -> str:
         sensor = self.sensor_settings[device_index][channel - 1]
@@ -1262,7 +1393,6 @@ class ElementCheckerApp(tk.Tk):
             "name": tk.StringVar(value=sensor.name),
             "sensor_type": tk.StringVar(value=sensor.sensor_type),
             "used": tk.StringVar(value="Активен" if sensor.used else "Выключен"),
-            "poll_period_s": tk.StringVar(value=str(sensor.poll_period_s).replace(".", ",")),
             "tmin": tk.StringVar(value="" if sensor.tmin is None else str(sensor.tmin).replace(".", ",")),
             "tmax": tk.StringVar(value="" if sensor.tmax is None else str(sensor.tmax).replace(".", ",")),
             "twar": tk.StringVar(value="" if sensor.twar is None else str(sensor.twar).replace(".", ",")),
@@ -1276,7 +1406,6 @@ class ElementCheckerApp(tk.Tk):
             ("Наименование канала", "name", "entry"),
             ("Тип датчика / назначение", "sensor_type", ("Термодатчик", "Датчик теплового потока")),
             ("Признак активности", "used", ("Активен", "Выключен")),
-            ("Период опроса, с", "poll_period_s", "entry"),
             ("Допустимые пределы", "limits", "limits"),
             ("Линейная калибровка", "calibration", "calibration"),
         ]
@@ -1356,9 +1485,6 @@ class ElementCheckerApp(tk.Tk):
                     return None
                 return float(text)
 
-            poll_period_s = float(self.engineering_vars["poll_period_s"].get().replace(",", "."))
-            if not 0.5 <= poll_period_s <= 2.0:
-                raise ValueError("Polling period must be from 0.5 to 2 seconds")
             calibration_a = float(self.engineering_vars["calibration_a"].get().replace(",", "."))
             calibration_b = float(self.engineering_vars["calibration_b"].get().replace(",", "."))
             tmin = parse_limit("tmin")
@@ -1381,7 +1507,6 @@ class ElementCheckerApp(tk.Tk):
         sensor.sensor_type = self.engineering_vars["sensor_type"].get()
         used_value = self.engineering_vars["used"].get()
         sensor.used = used_value == "Активен" or used_value.startswith("Рђ")
-        sensor.poll_period_s = poll_period_s
         sensor.tmin = tmin
         sensor.tmax = tmax
         sensor.twar = twar
@@ -1491,7 +1616,7 @@ class ElementCheckerApp(tk.Tk):
                 bytesize=serial.EIGHTBITS,
                 parity=serial.PARITY_NONE,
                 stopbits=settings.stopbits,
-                timeout=max(0.2, settings.scan_rate_ms / 1000),
+                timeout=float(os.getenv("ELEMER_SERIAL_TIMEOUT_SECONDS", "0.2")),
                 write_timeout=1,
             )
         except Exception as exc:
@@ -1585,25 +1710,12 @@ class ElementCheckerApp(tk.Tk):
         def worker() -> None:
             try:
                 for device_index, settings in enumerate(settings_by_device):
-                    for channel in range(1, TELEMETRY_CHANNELS + 1):
-                        if not self.sensor_settings[device_index][channel - 1].used:
-                            continue
-                        try:
-                            sensor_type_code = self._read_sensor_type_for_worker(settings, device_index, channel)
-                            address = TELEMETRY_WITH_ERRORS_BASE_ADDRESS + (channel - 1) * TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL
-                            request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL)
-                            self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
-                            response = self._transact(request, 13)
-                            self.ui_queue.put(
-                                (
-                                    "telemetry",
-                                    f"{device_index}|{channel}|{settings.slave_addr}|{sensor_type_code if sensor_type_code is not None else ''}|{response.hex()}",
-                                )
-                            )
-                            time.sleep(max(0.02, settings.scan_rate_ms / 1000 / 10))
-                        except Exception as exc:
-                            self.ui_queue.put(("temp", f"{device_index}|{channel}|error"))
-                            self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: Error: {exc}"))
+                    channels = [
+                        channel
+                        for channel in range(1, TELEMETRY_CHANNELS + 1)
+                        if self.sensor_settings[device_index][channel - 1].used
+                    ]
+                    self._poll_channels_block_for_worker(settings, device_index, channels)
             finally:
                 self.ui_queue.put(("poll_done", "auto" if auto else "manual"))
 
@@ -1630,7 +1742,7 @@ class ElementCheckerApp(tk.Tk):
                     self.auto_poll_next_due[key] = now
                 if now >= self.auto_poll_next_due[key]:
                     due_channels.append(key)
-                    self.auto_poll_next_due[key] = now + max(0.5, min(2.0, sensor.poll_period_s))
+                    self.auto_poll_next_due[key] = now + AUTO_SENSOR_POLL_PERIOD_S
 
         if not due_channels:
             return False
@@ -1645,38 +1757,102 @@ class ElementCheckerApp(tk.Tk):
 
         def worker() -> None:
             try:
+                channels_by_device: dict[int, list[int]] = {}
                 for device_index, channel in due_channels:
-                    settings = settings_by_device[device_index]
-                    try:
-                        sensor_type_code = self._read_sensor_type_for_worker(settings, device_index, channel)
-                        address = TELEMETRY_WITH_ERRORS_BASE_ADDRESS + (channel - 1) * TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL
-                        request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL)
-                        self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
-                        response = self._transact(request, 13)
-                        self.ui_queue.put(
-                            (
-                                "telemetry",
-                                f"{device_index}|{channel}|{settings.slave_addr}|{sensor_type_code if sensor_type_code is not None else ''}|{response.hex()}",
-                            )
-                        )
-                        time.sleep(max(0.02, settings.scan_rate_ms / 1000 / 10))
-                    except Exception as exc:
-                        self.ui_queue.put(("temp", f"{device_index}|{channel}|error"))
-                        self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: Error: {exc}"))
+                    channels_by_device.setdefault(device_index, []).append(channel)
+                for device_index, channels in channels_by_device.items():
+                    self._poll_channels_block_for_worker(settings_by_device[device_index], device_index, channels)
             finally:
                 self.ui_queue.put(("poll_done", "auto"))
 
         threading.Thread(target=worker, daemon=True).start()
         return True
 
-    def _read_sensor_type_for_worker(self, settings: PortSettings, device_index: int, channel: int) -> int | None:
+    def _poll_channels_block_for_worker(self, settings: PortSettings, device_index: int, channels: list[int]) -> None:
+        if not channels:
+            return
+        for channel in channels:
+            self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
+
+        sensor_type_codes = self._read_sensor_types_block_for_worker(settings, device_index)
+        try:
+            request = build_request(settings.slave_addr, 0x03, TELEMETRY_WITH_ERRORS_BASE_ADDRESS, TELEMETRY_CHANNELS * TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL)
+            response = self._transact(
+                request,
+                expected_response_size(0x03, TELEMETRY_CHANNELS * TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL),
+                log_transaction=False,
+            )
+            result = validate_read_response(response, settings.slave_addr, 0x03, TELEMETRY_CHANNELS * TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL * 2)
+            if not result.valid:
+                self.ui_queue.put(("log", f"Device {device_index + 1}: telemetry block read failed - {result.message}"))
+                for channel in channels:
+                    self._poll_channel_individual_for_worker(settings, device_index, channel)
+                return
+
+            for channel in channels:
+                offset = (channel - 1) * TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL * 2
+                channel_data = result.data[offset : offset + TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL * 2]
+                channel_response = build_read_response_frame(settings.slave_addr, 0x03, channel_data)
+                sensor_type_code = sensor_type_codes[channel - 1]
+                self.ui_queue.put(
+                    (
+                        "telemetry",
+                        f"{device_index}|{channel}|{settings.slave_addr}|{sensor_type_code if sensor_type_code is not None else ''}|{channel_response.hex()}",
+                    )
+                )
+        except Exception as exc:
+            self.ui_queue.put(("log", f"Device {device_index + 1}: telemetry block error - {exc}"))
+            for channel in channels:
+                self._poll_channel_individual_for_worker(settings, device_index, channel)
+
+    def _poll_channel_individual_for_worker(self, settings: PortSettings, device_index: int, channel: int) -> None:
+        try:
+            sensor_type_code = self._read_sensor_type_for_worker(
+                settings, device_index, channel, log_transaction=False
+            )
+            address = TELEMETRY_WITH_ERRORS_BASE_ADDRESS + (channel - 1) * TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL
+            request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL)
+            response = self._transact(request, 13, log_transaction=False)
+            self.ui_queue.put(
+                (
+                    "telemetry",
+                    f"{device_index}|{channel}|{settings.slave_addr}|{sensor_type_code if sensor_type_code is not None else ''}|{response.hex()}",
+                )
+            )
+        except Exception as exc:
+            self.ui_queue.put(("temp", f"{device_index}|{channel}|error"))
+            self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: Error: {exc}"))
+
+    def _read_sensor_types_block_for_worker(self, settings: PortSettings, device_index: int) -> list[int | None]:
+        if all(value is not None for value in self.sensor_type_cache[device_index]):
+            return self.sensor_type_cache[device_index]
+
+        request = build_request(settings.slave_addr, 0x03, SENSOR_TYPE_BASE_ADDRESS, TELEMETRY_CHANNELS)
+        response = self._transact(request, expected_response_size(0x03, TELEMETRY_CHANNELS), log_transaction=False)
+        result = validate_read_response(response, settings.slave_addr, 0x03, TELEMETRY_CHANNELS * 2)
+        if not result.valid:
+            self.ui_queue.put(("log", f"Device {device_index + 1}: sensor type block read failed - {result.message}"))
+            return self.sensor_type_cache[device_index]
+
+        for channel in range(1, TELEMETRY_CHANNELS + 1):
+            offset = (channel - 1) * 2
+            self.sensor_type_cache[device_index][channel - 1] = decode_ushort(result.data[offset : offset + 2])
+        return self.sensor_type_cache[device_index]
+
+    def _read_sensor_type_for_worker(
+        self,
+        settings: PortSettings,
+        device_index: int,
+        channel: int,
+        log_transaction: bool = True,
+    ) -> int | None:
         cached = self.sensor_type_cache[device_index][channel - 1]
         if cached is not None:
             return cached
 
         address = SENSOR_TYPE_BASE_ADDRESS + (channel - 1)
         request = build_request(settings.slave_addr, 0x03, address, 1)
-        response = self._transact(request, 7)
+        response = self._transact(request, 7, log_transaction=log_transaction)
         result = validate_read_response(response, settings.slave_addr, 0x03, 2)
         if not result.valid:
             self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: sensor type read failed - {result.message}"))
@@ -1705,7 +1881,7 @@ class ElementCheckerApp(tk.Tk):
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
 
-    def _transact(self, request: bytes, expected_size: int) -> bytes:
+    def _transact(self, request: bytes, expected_size: int, log_transaction: bool = True) -> bytes:
         if not self.worker_lock.acquire(blocking=False):
             raise RuntimeError("Request is already running")
         try:
@@ -1714,8 +1890,9 @@ class ElementCheckerApp(tk.Tk):
             self.serial_port.write(request)
             self.serial_port.flush()
             response = self.serial_port.read(expected_size or 256)
-            self.ui_queue.put(("log", f"TX: {format_hex(request)}"))
-            self.ui_queue.put(("log", f"RX: {format_hex(response) if response else '<timeout/no data>'}"))
+            if log_transaction:
+                self.ui_queue.put(("log", f"TX: {format_hex(request)}"))
+                self.ui_queue.put(("log", f"RX: {format_hex(response) if response else '<timeout/no data>'}"))
             return response
         finally:
             self.worker_lock.release()
@@ -1883,7 +2060,7 @@ class ElementCheckerApp(tk.Tk):
 
     def _schedule_auto_poll(self, delay_ms: int | None = None) -> None:
         self._cancel_auto_poll()
-        delay = 100 if delay_ms is None else delay_ms
+        delay = 10 if delay_ms is None else delay_ms
         self.auto_poll_after_id = self.after(delay, self._auto_poll_once)
 
     def _auto_poll_once(self) -> None:
@@ -1948,7 +2125,7 @@ class ElementCheckerApp(tk.Tk):
                     callback(bytes.fromhex(response_hex))
             else:
                 self._append_log(value)
-        self.after(100, self._drain_ui_queue)
+        self.after(20, self._drain_ui_queue)
 
     def _on_close(self) -> None:
         self._disconnect()

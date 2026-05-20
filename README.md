@@ -6,7 +6,9 @@ The main window contains connection controls, status, and three compact TM5104 t
 
 Logs are shown in a separate Logs window.
 
-The main window also has an Engineering menu. It contains 48 channel buttons grouped by Elemer device and an expandable editor for channel activity, naming, polling, sensor type, limit setpoints, and calibration settings.
+The Settings window also contains manual Elemer baudrate controls. The app reads device register `0409` with function `03` to check the current speed code and writes the same register with function `06` to set a new speed. Supported device speed codes are `4` = 2400, `5` = 4800, `6` = 9600, `7` = 19200, `8` = 38400, `9` = 57600, `10` = 115200 bit/s.
+
+The main window also has an Engineering menu. It contains 48 channel buttons grouped by Elemer device and an expandable editor for channel activity, naming, sensor type, limit setpoints, and calibration settings.
 Engineering channel parameters are saved to `channel_settings.json` after confirmation.
 
 On startup the app reads `element_checker_settings.xlsx` from the repository folder. Sensor names are taken from `Name`; sensors where `Used` is not `1` are disabled. `Tmin` and `Tmax` define the cell indicator color: blue below minimum, green in range, red above maximum.
@@ -27,9 +29,9 @@ Empty limit values are ignored when `color_level` is calculated.
 
 Each measurement row stores `sensor_kind_code` from the Engineering channel type: `1` for a temperature sensor, `2` for a heat flux sensor.
 
-Automatic temperature polling is configured in the main window. During automatic polling each active sensor is polled according to its channel polling period from the Engineering menu.
+Automatic temperature polling is configured in the main window. During automatic polling each active sensor is scheduled for polling twice per second. The app reads each TM5104 telemetry block in one Modbus request, removes artificial inter-sensor delays, and polls as fast as the Modbus line allows.
 
-During polling, every sensor response is also saved to PostgreSQL/TimescaleDB table `sensor_measurements`.
+During polling, every sensor response is immediately saved to PostgreSQL/TimescaleDB table `sensor_measurements`.
 The app reads temperature and measurement error from `0520 + 4 * (channel - 1)` and sensor type from `0860 + channel - 1`.
 
 Default database settings:
