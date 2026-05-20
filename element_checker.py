@@ -2323,21 +2323,82 @@ class ElementCheckerApp(tk.Tk):
         else:
             raise RuntimeError("PostgreSQL driver is not installed")
 
+        export_columns = [
+            "time",
+            "device_index",
+            "device_label",
+            "slave_addr",
+            "channel",
+            "global_channel",
+            "sensor_num",
+            "sensor_name",
+            "sensor_used",
+            "limit_tmin",
+            "limit_tmax",
+            "limit_twar",
+            "limit_tcrit",
+            "limit_temerg",
+            "color_level",
+            "sensor_kind_code",
+            "calibration_a",
+            "calibration_b",
+            "emissivity",
+            "raw_temperature",
+            "temperature",
+            "measurement_error_code",
+            "measurement_error_text",
+            "timer_code",
+            "sensor_type_code",
+            "sensor_type_text",
+            "valid",
+            "validation_message",
+            "raw_response",
+        ]
+        text_columns = {
+            "device_label",
+            "sensor_num",
+            "sensor_name",
+            "measurement_error_text",
+            "sensor_type_text",
+            "validation_message",
+            "raw_response",
+        }
+        select_parts = []
+        for column in export_columns:
+            quoted = f'"{column}"'
+            if column in text_columns:
+                select_parts.append(f"encode({quoted}::bytea, 'hex') AS {quoted}")
+            else:
+                select_parts.append(quoted)
+        query = (
+            f"SELECT {', '.join(select_parts)} "
+            f"FROM {DB_TABLE_NAME} "
+            'WHERE "time" >= %s AND "time" <= %s '
+            'ORDER BY "time" ASC, "global_channel" ASC'
+        )
+
         try:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    f"""
-                    SELECT *
-                    FROM {DB_TABLE_NAME}
-                    WHERE time >= %s AND time <= %s
-                    ORDER BY time ASC, global_channel ASC
-                    """,
+                    query,
                     (start.astimezone(timezone.utc), end.astimezone(timezone.utc)),
                 )
-                rows = cursor.fetchall()
+                fetched_rows = cursor.fetchall()
                 columns = [getattr(description, "name", description[0]) for description in cursor.description]
         finally:
             connection.close()
+
+        text_indexes = [index for index, column in enumerate(columns) if column in text_columns]
+        rows = []
+        for row in fetched_rows:
+            values = list(row)
+            for index in text_indexes:
+                if values[index] is not None:
+                    try:
+                        values[index] = safe_excel_text(bytes.fromhex(str(values[index])))
+                    except Exception:
+                        values[index] = safe_excel_text(values[index])
+            rows.append(tuple(values))
 
         export_dir = Path(__file__).with_name("measurements")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
