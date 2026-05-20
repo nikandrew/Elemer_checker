@@ -37,6 +37,8 @@ Automatic temperature polling is configured in the main window. During automatic
 During polling, every sensor response is immediately saved to PostgreSQL/TimescaleDB table `sensor_measurements`.
 The app reads temperature and measurement error from `0520 + 4 * (channel - 1)` and sensor type from `0860 + channel - 1`.
 
+When automatic measurement is stopped with `Stop measurement`, the app exports all database rows collected during that measurement session to `measurements/*.xlsx` and shows a save confirmation. The main window also has an Excel export panel for the last hour, last 6 hours, today, or a custom `dd.mm.yy HH:MM` period.
+
 Default database settings:
 
 - database: `elemer_tvi`

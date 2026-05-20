@@ -11,10 +11,11 @@ import json
 import os
 from dataclasses import dataclass
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tkinter import messagebox, ttk
 from xml.etree import ElementTree
+from xml.sax.saxutils import escape as xml_escape
 
 try:
     import serial
@@ -391,6 +392,14 @@ class TimescaleMeasurementWriter:
         elif self.disabled_reason:
             self.log_callback(self.disabled_reason)
 
+    def wait_until_idle(self, timeout_s: float = 10.0) -> bool:
+        if not self.enabled:
+            return False
+        deadline = time.monotonic() + timeout_s
+        while self.queue.unfinished_tasks and time.monotonic() < deadline:
+            time.sleep(0.02)
+        return self.queue.unfinished_tasks == 0
+
     def close(self) -> None:
         if not self.enabled:
             return
@@ -671,29 +680,32 @@ class TimescaleMeasurementWriter:
         last_log = 0.0
         while True:
             item = self.queue.get()
-            should_stop = item is None and self.stop_event.is_set()
-            if item is None:
-                if should_stop:
-                    break
-                continue
-
             try:
-                if self._connection_closed(connection):
-                    connection = self._connect()
+                should_stop = item is None and self.stop_event.is_set()
+                if item is None:
+                    if should_stop:
+                        break
+                    continue
+
+                try:
+                    if self._connection_closed(connection):
+                        connection = self._connect()
+                        self.schema_ready = False
+                    self._ensure_schema(connection)
+                    if self._connection_closed(connection):
+                        raise RuntimeError("database connection closed before insert")
+                    self._insert_batch(connection, [item])
+                except Exception as exc:
+                    self._safe_rollback(connection)
+                    self._safe_close(connection)
+                    connection = None
                     self.schema_ready = False
-                self._ensure_schema(connection)
-                if self._connection_closed(connection):
-                    raise RuntimeError("database connection closed before insert")
-                self._insert_batch(connection, [item])
-            except Exception as exc:
-                self._safe_rollback(connection)
-                self._safe_close(connection)
-                connection = None
-                self.schema_ready = False
-                now = time.monotonic()
-                if now - last_log > 10:
-                    self.log_callback(f"{self.storage_mode} save error: {exc}")
-                    last_log = now
+                    now = time.monotonic()
+                    if now - last_log > 10:
+                        self.log_callback(f"{self.storage_mode} save error: {exc}")
+                        last_log = now
+            finally:
+                self.queue.task_done()
 
         self._safe_close(connection)
 
@@ -906,6 +918,78 @@ def save_channel_settings(path: Path, sensors: list[list[SensorSettings]]) -> No
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def excel_column_name(index: int) -> str:
+    name = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        name = chr(65 + remainder) + name
+    return name
+
+
+def excel_cell_xml(row: int, column: int, value) -> str:
+    cell_ref = f"{excel_column_name(column)}{row}"
+    if value is None:
+        return f'<c r="{cell_ref}"/>'
+    if isinstance(value, bool):
+        return f'<c r="{cell_ref}" t="b"><v>{1 if value else 0}</v></c>'
+    if isinstance(value, (int, float)) and math.isfinite(value):
+        return f'<c r="{cell_ref}"><v>{value}</v></c>'
+    if isinstance(value, datetime):
+        text = value.astimezone().strftime("%d.%m.%Y %H:%M:%S")
+    else:
+        text = str(value)
+    return f'<c r="{cell_ref}" t="inlineStr"><is><t>{xml_escape(text)}</t></is></c>'
+
+
+def write_xlsx(path: Path, columns: list[str], rows: list[tuple]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sheet_rows = []
+    all_rows = [tuple(columns), *rows]
+    for row_index, values in enumerate(all_rows, start=1):
+        cells = "".join(excel_cell_xml(row_index, column_index, value) for column_index, value in enumerate(values, start=1))
+        sheet_rows.append(f'<row r="{row_index}">{cells}</row>')
+    worksheet = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        f'<sheetData>{"".join(sheet_rows)}</sheetData>'
+        '</worksheet>'
+    )
+    workbook = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<sheets><sheet name="measurements" sheetId="1" r:id="rId1"/></sheets>'
+        '</workbook>'
+    )
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        '</Types>'
+    )
+    rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        '</Relationships>'
+    )
+    workbook_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+        '</Relationships>'
+    )
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", rels)
+        archive.writestr("xl/workbook.xml", workbook)
+        archive.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+        archive.writestr("xl/worksheets/sheet1.xml", worksheet)
+
+
 class ElementCheckerApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -932,6 +1016,8 @@ class ElementCheckerApp(tk.Tk):
         self.engineering_detail_frame: ttk.LabelFrame | None = None
         self.engineering_vars: dict[str, tk.Variable] = {}
         self.engineering_selected: tuple[int, int] | None = None
+        self.measurement_started_at: datetime | None = None
+        self.pending_stop_export = False
         self.sensor_settings, self.sensor_settings_warning = load_sensor_settings(Path(__file__).with_name(SETTINGS_FILE))
         self.channel_settings_path = Path(__file__).with_name(CHANNEL_SETTINGS_FILE)
         channel_settings_warning = load_channel_settings(self.channel_settings_path, self.sensor_settings)
@@ -961,6 +1047,11 @@ class ElementCheckerApp(tk.Tk):
         self.expected_var = tk.StringVar(value="")
         self.auto_poll_var = tk.BooleanVar(value=False)
         self.auto_poll_status_var = tk.StringVar(value="Auto poll stopped")
+        self.export_mode_var = tk.StringVar(value="За последний час")
+        now_local = datetime.now()
+        self.export_start_var = tk.StringVar(value=(now_local - timedelta(days=1)).strftime("%d.%m.%y %H:%M"))
+        self.export_end_var = tk.StringVar(value=now_local.strftime("%d.%m.%y %H:%M"))
+        self.export_status_var = tk.StringVar(value="Выгрузка готова")
         self.quantity_var.trace_add("write", lambda *_args: self._refresh_expected())
 
         self._build_ui()
@@ -1057,6 +1148,32 @@ class ElementCheckerApp(tk.Tk):
         self.auto_stop_button.state(["disabled"])
         ttk.Label(auto_frame, textvariable=self.auto_poll_status_var, anchor="w").grid(
             row=0, column=2, padx=8, pady=8, sticky="ew"
+        )
+
+        export_frame = ttk.LabelFrame(self, text="Выгрузка в Excel")
+        export_frame.grid(row=4, column=0, padx=12, pady=6, sticky="ew")
+        export_frame.columnconfigure(1, weight=1)
+        export_frame.columnconfigure(3, weight=1)
+
+        ttk.Label(export_frame, text="Период").grid(row=0, column=0, padx=8, pady=6, sticky="w")
+        export_mode = ttk.Combobox(
+            export_frame,
+            textvariable=self.export_mode_var,
+            values=("За последний час", "За 6 часов", "За сегодня", "За период"),
+            state="readonly",
+            width=18,
+        )
+        export_mode.grid(row=0, column=1, padx=8, pady=6, sticky="ew")
+
+        ttk.Label(export_frame, text="С").grid(row=0, column=2, padx=8, pady=6, sticky="w")
+        ttk.Entry(export_frame, textvariable=self.export_start_var, width=16).grid(row=0, column=3, padx=8, pady=6, sticky="ew")
+        ttk.Label(export_frame, text="По").grid(row=0, column=4, padx=8, pady=6, sticky="w")
+        ttk.Entry(export_frame, textvariable=self.export_end_var, width=16).grid(row=0, column=5, padx=8, pady=6, sticky="ew")
+        ttk.Button(export_frame, text="Выгрузить данные", command=self._export_selected_period).grid(
+            row=0, column=6, padx=8, pady=6, sticky="ew"
+        )
+        ttk.Label(export_frame, textvariable=self.export_status_var, anchor="w").grid(
+            row=1, column=0, columnspan=7, padx=8, pady=(0, 6), sticky="ew"
         )
 
     def _sensor_trend(self, device_index: int, channel: int) -> str:
@@ -1687,7 +1804,7 @@ class ElementCheckerApp(tk.Tk):
         self._append_log("Port connected")
 
     def _disconnect(self) -> None:
-        self._stop_auto_poll()
+        self._stop_auto_poll(export_session=False)
         if self.serial_port:
             try:
                 self.serial_port.close()
@@ -2097,11 +2214,91 @@ class ElementCheckerApp(tk.Tk):
         else:
             self.start_address_var.set(str(value))
 
+    def _parse_export_datetime(self, value: str) -> datetime:
+        value = value.strip()
+        for fmt in ("%d.%m.%y %H:%M", "%d.%m.%Y %H:%M"):
+            try:
+                return datetime.strptime(value, fmt).astimezone()
+            except ValueError:
+                pass
+        raise ValueError("Use date format dd.mm.yy HH:MM")
+
+    def _selected_export_range(self) -> tuple[datetime, datetime, str]:
+        now = datetime.now().astimezone()
+        mode = self.export_mode_var.get()
+        if mode == "За последний час":
+            return now - timedelta(hours=1), now, "last_hour"
+        if mode == "За 6 часов":
+            return now - timedelta(hours=6), now, "last_6_hours"
+        if mode == "За сегодня":
+            return now.replace(hour=0, minute=0, second=0, microsecond=0), now, "today"
+        start = self._parse_export_datetime(self.export_start_var.get())
+        end = self._parse_export_datetime(self.export_end_var.get())
+        if end <= start:
+            raise ValueError("End time must be later than start time")
+        return start, end, "custom"
+
+    def _export_selected_period(self) -> None:
+        try:
+            start, end, label = self._selected_export_range()
+        except Exception as exc:
+            messagebox.showerror("Export period error", str(exc))
+            return
+        self._export_measurements_async(start, end, label)
+
+    def _export_measurements_async(self, start: datetime, end: datetime, label: str) -> None:
+        if not self.db_writer.enabled:
+            messagebox.showerror("Export error", self.db_writer.disabled_reason or "Database driver is not installed")
+            return
+        self.export_status_var.set("Exporting data to Excel...")
+
+        def worker() -> None:
+            try:
+                self.db_writer.wait_until_idle()
+                path, row_count = self._export_measurements_to_excel(start, end, label)
+                self.ui_queue.put(("export_done", f"ok|{path}|{row_count}"))
+            except Exception as exc:
+                self.ui_queue.put(("export_done", f"error|{exc}"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _export_measurements_to_excel(self, start: datetime, end: datetime, label: str) -> tuple[Path, int]:
+        if psycopg is not None:
+            connection = psycopg.connect(**self.db_writer.connection_kwargs)
+        elif psycopg2 is not None:
+            connection = psycopg2.connect(**self.db_writer.connection_kwargs)
+        else:
+            raise RuntimeError("PostgreSQL driver is not installed")
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT *
+                    FROM {DB_TABLE_NAME}
+                    WHERE time >= %s AND time <= %s
+                    ORDER BY time ASC, global_channel ASC
+                    """,
+                    (start.astimezone(timezone.utc), end.astimezone(timezone.utc)),
+                )
+                rows = cursor.fetchall()
+                columns = [getattr(description, "name", description[0]) for description in cursor.description]
+        finally:
+            connection.close()
+
+        export_dir = Path(__file__).with_name("measurements")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = export_dir / f"elemer_measurements_{label}_{timestamp}.xlsx"
+        write_xlsx(path, columns, rows)
+        return path, len(rows)
+
     def _start_auto_poll(self) -> None:
         if not self._ensure_connected():
             return
 
         self.auto_poll_var.set(True)
+        self.measurement_started_at = datetime.now(timezone.utc)
+        self.pending_stop_export = False
         now = time.monotonic()
         self.auto_poll_next_due = {
             (device_index, channel): now
@@ -2114,7 +2311,9 @@ class ElementCheckerApp(tk.Tk):
         self.auto_poll_status_var.set("Auto poll running")
         self._schedule_auto_poll(0)
 
-    def _stop_auto_poll(self) -> None:
+    def _stop_auto_poll(self, export_session: bool = True) -> None:
+        was_running = self.auto_poll_var.get()
+        session_start = self.measurement_started_at
         self.auto_poll_var.set(False)
         self._cancel_auto_poll()
         self.auto_poll_next_due = {}
@@ -2123,6 +2322,13 @@ class ElementCheckerApp(tk.Tk):
         if hasattr(self, "auto_stop_button"):
             self.auto_stop_button.state(["disabled"])
         self.auto_poll_status_var.set("Auto poll stopped")
+        if export_session and was_running and session_start is not None:
+            if self.temperature_poll_running:
+                self.pending_stop_export = True
+                self.export_status_var.set("Waiting for the current poll to finish before export...")
+            else:
+                self._export_measurements_async(session_start, datetime.now(timezone.utc), "session")
+                self.measurement_started_at = None
 
     def _schedule_auto_poll(self, delay_ms: int | None = None) -> None:
         self._cancel_auto_poll()
@@ -2184,11 +2390,27 @@ class ElementCheckerApp(tk.Tk):
                     self._schedule_auto_poll()
                 elif value == "auto":
                     self.auto_poll_status_var.set("Auto poll stopped")
+                    if self.pending_stop_export:
+                        self.pending_stop_export = False
+                        end = datetime.now(timezone.utc)
+                        self._export_measurements_async(self.measurement_started_at or end, end, "session")
+                        self.measurement_started_at = None
             elif kind == "callback":
                 callback_id_text, response_hex = value.split("|", 1)
                 callback = self._pending_callbacks.pop(int(callback_id_text), None)
                 if callback is not None:
                     callback(bytes.fromhex(response_hex))
+            elif kind == "export_done":
+                parts = value.split("|", 2)
+                if parts[0] == "ok":
+                    path = parts[1]
+                    row_count = parts[2]
+                    self.export_status_var.set(f"Saved {row_count} row(s): {path}")
+                    messagebox.showinfo("Excel export", f"Data saved to file:\n{path}")
+                else:
+                    error = parts[1] if len(parts) > 1 else "unknown error"
+                    self.export_status_var.set(f"Export failed: {error}")
+                    messagebox.showerror("Excel export error", error)
             else:
                 self._append_log(value)
         self.after(20, self._drain_ui_queue)
