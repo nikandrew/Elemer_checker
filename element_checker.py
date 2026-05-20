@@ -2316,13 +2316,6 @@ class ElementCheckerApp(tk.Tk):
         threading.Thread(target=worker, daemon=True).start()
 
     def _export_measurements_to_excel(self, start: datetime, end: datetime, label: str) -> tuple[Path, int]:
-        if psycopg is not None:
-            connection = psycopg.connect(**self.db_writer.connection_kwargs)
-        elif psycopg2 is not None:
-            connection = psycopg2.connect(**self.db_writer.connection_kwargs)
-        else:
-            raise RuntimeError("PostgreSQL driver is not installed")
-
         export_columns = [
             "time",
             "device_index",
@@ -2354,22 +2347,7 @@ class ElementCheckerApp(tk.Tk):
             "validation_message",
             "raw_response",
         ]
-        text_columns = {
-            "device_label",
-            "sensor_num",
-            "sensor_name",
-            "measurement_error_text",
-            "sensor_type_text",
-            "validation_message",
-            "raw_response",
-        }
-        select_parts = []
-        for column in export_columns:
-            quoted = f'"{column}"'
-            if column in text_columns:
-                select_parts.append(f"encode({quoted}::bytea, 'hex') AS {quoted}")
-            else:
-                select_parts.append(quoted)
+        select_parts = [f'"{column}"' for column in export_columns]
         query = (
             f"SELECT {', '.join(select_parts)} "
             f"FROM {DB_TABLE_NAME} "
@@ -2377,28 +2355,36 @@ class ElementCheckerApp(tk.Tk):
             'ORDER BY "time" ASC, "global_channel" ASC'
         )
 
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    query,
-                    (start.astimezone(timezone.utc), end.astimezone(timezone.utc)),
-                )
-                fetched_rows = cursor.fetchall()
-                columns = [getattr(description, "name", description[0]) for description in cursor.description]
-        finally:
-            connection.close()
-
-        text_indexes = [index for index, column in enumerate(columns) if column in text_columns]
+        last_error: Exception | None = None
         rows = []
-        for row in fetched_rows:
-            values = list(row)
-            for index in text_indexes:
-                if values[index] is not None:
-                    try:
-                        values[index] = safe_excel_text(bytes.fromhex(str(values[index])))
-                    except Exception:
-                        values[index] = safe_excel_text(values[index])
-            rows.append(tuple(values))
+        columns = export_columns
+        for client_encoding in ("UTF8", "WIN1251", "LATIN1"):
+            connection = None
+            try:
+                if psycopg is not None:
+                    connection = psycopg.connect(**self.db_writer.connection_kwargs)
+                elif psycopg2 is not None:
+                    connection = psycopg2.connect(**self.db_writer.connection_kwargs)
+                else:
+                    raise RuntimeError("PostgreSQL driver is not installed")
+                with connection.cursor() as cursor:
+                    cursor.execute(f"SET client_encoding TO '{client_encoding}'")
+                    cursor.execute(
+                        query,
+                        (start.astimezone(timezone.utc), end.astimezone(timezone.utc)),
+                    )
+                    rows = cursor.fetchall()
+                    columns = [getattr(description, "name", description[0]) for description in cursor.description]
+                last_error = None
+                break
+            except UnicodeDecodeError as exc:
+                last_error = exc
+            finally:
+                if connection is not None:
+                    connection.close()
+
+        if last_error is not None:
+            raise last_error
 
         export_dir = Path(__file__).with_name("measurements")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
