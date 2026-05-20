@@ -10,12 +10,12 @@
           "used": true,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.1,
-          "calibration_b": 0.3,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.1,
+          "calibration_b": 0.3
         },
         {
           "num": "1_2",
@@ -23,12 +23,12 @@
           "used": true,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.1,
-          "calibration_b": 0.5,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.1,
+          "calibration_b": 0.5
         },
         {
           "num": "1_3",
@@ -36,12 +36,12 @@
           "used": true,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Датчик теплового потока",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Датчик теплового потока",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_4",
@@ -49,12 +49,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Датчик теплового потока",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Датчик теплового потока",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_5",
@@ -62,12 +62,12 @@
           "used": true,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_6",
@@ -75,12 +75,12 @@
           "used": true,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_7",
@@ -88,12 +88,12 @@
           "used": true,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Датчик теплового потока",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Датчик теплового потока",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_8",
@@ -101,12 +101,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_9",
@@ -114,12 +114,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_10",
@@ -127,12 +127,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_11",
@@ -140,12 +140,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_12",
@@ -153,12 +153,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_13",
@@ -166,12 +166,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_14",
@@ -179,12 +179,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_15",
@@ -192,12 +192,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "1_16",
@@ -205,12 +205,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         }
       ]
     },
@@ -223,12 +223,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_2",
@@ -236,12 +236,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_3",
@@ -249,12 +249,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_4",
@@ -262,12 +262,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_5",
@@ -275,12 +275,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_6",
@@ -288,12 +288,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_7",
@@ -301,12 +301,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_8",
@@ -314,12 +314,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_9",
@@ -327,12 +327,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_10",
@@ -340,12 +340,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_11",
@@ -353,12 +353,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_12",
@@ -366,12 +366,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_13",
@@ -379,12 +379,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_14",
@@ -392,12 +392,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_15",
@@ -405,12 +405,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "2_16",
@@ -418,12 +418,12 @@
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         }
       ]
     },
@@ -432,211 +432,211 @@
       "channels": [
         {
           "num": "3_1",
-          "name": "T32",
-          "used": false,
-          "tmin": 10.0,
-          "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
-          "twar": null,
-          "tcrit": null,
-          "temerg": null
-        },
-        {
-          "num": "3_2",
           "name": "T33",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
+        },
+        {
+          "num": "3_2",
+          "name": "T34",
+          "used": true,
+          "tmin": 10.0,
+          "tmax": 30.0,
+          "twar": null,
+          "tcrit": null,
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "3_3",
-          "name": "T34",
-          "used": false,
+          "name": "T35",
+          "used": true,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
           "num": "3_4",
-          "name": "T35",
-          "used": false,
-          "tmin": 10.0,
-          "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
-          "twar": null,
-          "tcrit": null,
-          "temerg": null
-        },
-        {
-          "num": "3_5",
           "name": "T36",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
-          "num": "3_6",
+          "num": "3_5",
           "name": "T37",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
-          "num": "3_7",
+          "num": "3_6",
           "name": "T38",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
-          "num": "3_8",
+          "num": "3_7",
           "name": "T39",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
-          "num": "3_9",
+          "num": "3_8",
           "name": "T40",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
-          "num": "3_10",
+          "num": "3_9",
           "name": "T41",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
-          "num": "3_11",
+          "num": "3_10",
           "name": "T42",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
-          "num": "3_12",
+          "num": "3_11",
           "name": "T43",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
-          "num": "3_13",
+          "num": "3_12",
           "name": "T44",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
-          "num": "3_14",
+          "num": "3_13",
           "name": "T45",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
-          "num": "3_15",
+          "num": "3_14",
           "name": "T46",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         },
         {
-          "num": "3_16",
+          "num": "3_15",
           "name": "T47",
           "used": false,
           "tmin": 10.0,
           "tmax": 30.0,
-          "sensor_type": "Термодатчик",
-          "calibration_a": 1.0,
-          "calibration_b": 0.0,
           "twar": null,
           "tcrit": null,
-          "temerg": null
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
+        },
+        {
+          "num": "3_16",
+          "name": "T48",
+          "used": false,
+          "tmin": 10.0,
+          "tmax": 30.0,
+          "twar": null,
+          "tcrit": null,
+          "temerg": null,
+          "sensor_type": "Термодатчик",
+          "calibration_a": 1.0,
+          "calibration_b": 0.0
         }
       ]
     }
