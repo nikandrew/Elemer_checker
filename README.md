@@ -11,6 +11,7 @@ The Settings window also contains manual Elemer baudrate controls. The app reads
 The main window also has an Engineering menu. It contains 48 channel buttons grouped by Elemer device and an expandable editor for channel activity, naming, sensor type, limit setpoints, and calibration settings.
 Engineering channel parameters are saved to `channel_settings.json` after confirmation.
 When a channel is switched from disabled to active, the app sends function `06` to device register `0850 + channel - 1` with value `1` to enable automatic indicator color for that channel.
+The Engineering menu also has two device-copy buttons: read parameters from the currently selected channel, then select another channel and write the buffered parameters to it. This copies the TM5104 channel registers such as `SEnS`, `iCOL`, setpoints, scaling, processing, gain, shift, and related per-channel parameters.
 
 On startup the app reads `element_checker_settings.xlsx` from the repository folder. Sensor names are taken from `Name`; sensors where `Used` is not `1` are disabled. `Tmin` and `Tmax` define the cell indicator color: blue below minimum, green in range, red above maximum.
 

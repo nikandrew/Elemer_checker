@@ -110,6 +110,44 @@ class ModbusResult:
     data: bytes = b""
 
 
+@dataclass(frozen=True)
+class ChannelDeviceParameter:
+    name: str
+    base_address: int
+    register_count: int
+
+
+CHANNEL_DEVICE_PARAMETERS = (
+    ChannelDeviceParameter("SEt1", 0x0700, 2),
+    ChannelDeviceParameter("HYS1", 0x0720, 2),
+    ChannelDeviceParameter("SEt2", 0x0740, 2),
+    ChannelDeviceParameter("HYS2", 0x0760, 2),
+    ChannelDeviceParameter("StYP", 0x0780, 1),
+    ChannelDeviceParameter("JtOC", 0x07F0, 1),
+    ChannelDeviceParameter("ScL", 0x0800, 2),
+    ChannelDeviceParameter("ScH", 0x0820, 2),
+    ChannelDeviceParameter("SctP", 0x0840, 1),
+    ChannelDeviceParameter("iCOL", 0x0850, 1),
+    ChannelDeviceParameter("SEnS", 0x0860, 1),
+    ChannelDeviceParameter("InPC", 0x0880, 1),
+    ChannelDeviceParameter("InC1", 0x0890, 1),
+    ChannelDeviceParameter("InC2", 0x08A0, 1),
+    ChannelDeviceParameter("SHFn", 0x08B0, 2),
+    ChannelDeviceParameter("GAin", 0x08D0, 2),
+    ChannelDeviceParameter("PrcS", 0x08F0, 1),
+    ChannelDeviceParameter("nSu", 0x0900, 1),
+    ChannelDeviceParameter("brdL", 0x0910, 2),
+    ChannelDeviceParameter("brdH", 0x0930, 2),
+    ChannelDeviceParameter("Sil", 0x0980, 1),
+    ChannelDeviceParameter("rES0", 0x0990, 2),
+    ChannelDeviceParameter("rESL", 0x09B0, 2),
+    ChannelDeviceParameter("Lc", 0x09D0, 1),
+    ChannelDeviceParameter("IdPL", 0x09E0, 2),
+    ChannelDeviceParameter("IdPH", 0x0A00, 2),
+    ChannelDeviceParameter("JCt", 0x0A20, 1),
+)
+
+
 @dataclass
 class SensorSettings:
     num: str
@@ -248,6 +286,35 @@ def build_request(slave_addr: int, function_code: int, start_address: int, quant
     return payload + modbus_crc(payload)
 
 
+def build_write_multiple_registers_request(slave_addr: int, start_address: int, values: list[int]) -> bytes:
+    if not 0 <= slave_addr <= 247:
+        raise ValueError("Slave address must be 0..247")
+    if not 0 <= start_address <= 0xFFFF:
+        raise ValueError("Start address must be 0..65535")
+    if not values:
+        raise ValueError("Register values are empty")
+    if len(values) > 123:
+        raise ValueError("Function 16 can write no more than 123 registers")
+    for value in values:
+        if not 0 <= value <= 0xFFFF:
+            raise ValueError("Register value must be 0..65535")
+
+    quantity = len(values)
+    payload = bytes(
+        [
+            slave_addr,
+            0x10,
+            (start_address >> 8) & 0xFF,
+            start_address & 0xFF,
+            (quantity >> 8) & 0xFF,
+            quantity & 0xFF,
+            quantity * 2,
+        ]
+    )
+    payload += b"".join(value.to_bytes(2, byteorder="big", signed=False) for value in values)
+    return payload + modbus_crc(payload)
+
+
 def build_read_response_frame(slave_addr: int, function_code: int, data: bytes) -> bytes:
     payload = bytes([slave_addr, function_code, len(data)]) + data
     return payload + modbus_crc(payload)
@@ -305,6 +372,37 @@ def validate_write_single_response(response: bytes, request: bytes) -> ModbusRes
         return ModbusResult(False, f"Modbus exception {code:02X}: {description}")
     if response != request:
         return ModbusResult(False, f"write echo mismatch: {format_hex(response)}")
+    return ModbusResult(True, "valid")
+
+
+def validate_write_multiple_response(
+    response: bytes,
+    slave_addr: int,
+    start_address: int,
+    quantity: int,
+) -> ModbusResult:
+    if not response:
+        return ModbusResult(False, "timeout/no data")
+    if len(response) < 5:
+        return ModbusResult(False, f"too short: {len(response)} byte(s)")
+    if not check_crc(response):
+        return ModbusResult(False, "CRC mismatch")
+    if response[0] != slave_addr:
+        return ModbusResult(False, f"wrong slave addr: {response[0]}")
+    if response[1] == 0x90:
+        code = response[2]
+        description = EXCEPTION_CODES.get(code, "Unknown exception")
+        return ModbusResult(False, f"Modbus exception {code:02X}: {description}")
+    if response[1] != 0x10:
+        return ModbusResult(False, f"wrong function: {response[1]:02X}")
+    if len(response) != 8:
+        return ModbusResult(False, f"wrong frame length: {len(response)}, expected 8")
+    echoed_address = int.from_bytes(response[2:4], byteorder="big", signed=False)
+    echoed_quantity = int.from_bytes(response[4:6], byteorder="big", signed=False)
+    if echoed_address != start_address:
+        return ModbusResult(False, f"wrong start address: {echoed_address:04X}")
+    if echoed_quantity != quantity:
+        return ModbusResult(False, f"wrong register count: {echoed_quantity}, expected {quantity}")
     return ModbusResult(True, "valid")
 
 
@@ -1052,6 +1150,7 @@ class ElementCheckerApp(tk.Tk):
         self.engineering_detail_frame: ttk.LabelFrame | None = None
         self.engineering_vars: dict[str, tk.Variable] = {}
         self.engineering_selected: tuple[int, int] | None = None
+        self.device_channel_param_buffer: dict | None = None
         self.measurement_started_at: datetime | None = None
         self.pending_stop_export = False
         self.sensor_settings, self.sensor_settings_warning = load_sensor_settings(Path(__file__).with_name(SETTINGS_FILE))
@@ -1682,6 +1781,16 @@ class ElementCheckerApp(tk.Tk):
         ttk.Button(button_frame, text="Сохранить канал", command=self._save_engineering_channel).grid(
             row=0, column=0, columnspan=2, sticky="ew"
         )
+        ttk.Button(
+            button_frame,
+            text="Считать параметры из канала",
+            command=self._read_selected_device_channel_parameters,
+        ).grid(row=1, column=0, padx=(0, 4), pady=(8, 0), sticky="ew")
+        ttk.Button(
+            button_frame,
+            text="Записать параметры в канал",
+            command=self._write_selected_device_channel_parameters,
+        ).grid(row=1, column=1, padx=(4, 0), pady=(8, 0), sticky="ew")
 
     def _save_engineering_channel(self) -> None:
         if self.engineering_selected is None:
@@ -1778,6 +1887,148 @@ class ElementCheckerApp(tk.Tk):
             self._append_log(message)
 
         self._send_request(request, 8, handle_response)
+
+    def _device_channel_parameter_address(self, parameter: ChannelDeviceParameter, channel: int) -> int:
+        if parameter.register_count == 2:
+            return parameter.base_address + (channel - 1) * 2
+        return parameter.base_address + channel - 1
+
+    def _read_selected_device_channel_parameters(self) -> None:
+        if self.engineering_selected is None:
+            messagebox.showwarning("Channel parameters", "Select a channel first.", parent=self.engineering_window)
+            return
+        if not self._ensure_connected():
+            return
+        if self.auto_poll_var.get() or self.temperature_poll_running:
+            messagebox.showwarning(
+                "Channel parameters",
+                "Stop measurement before reading device channel parameters.",
+                parent=self.engineering_window,
+            )
+            return
+
+        device_index, channel = self.engineering_selected
+        try:
+            settings = self._settings(device_index)
+        except Exception as exc:
+            messagebox.showerror("Channel parameters", str(exc), parent=self.engineering_window)
+            return
+
+        self.status_var.set(f"Reading device parameters: Elemer {device_index + 1}, channel {channel}")
+
+        def worker() -> None:
+            try:
+                parameter_values: dict[str, list[int]] = {}
+                for parameter in CHANNEL_DEVICE_PARAMETERS:
+                    address = self._device_channel_parameter_address(parameter, channel)
+                    request = build_request(settings.slave_addr, 0x03, address, parameter.register_count)
+                    response = self._transact(
+                        request,
+                        expected_response_size(0x03, parameter.register_count),
+                        log_transaction=False,
+                    )
+                    result = validate_read_response(response, settings.slave_addr, 0x03, parameter.register_count * 2)
+                    if not result.valid:
+                        raise RuntimeError(f"{parameter.name} {address:04X}: {result.message}")
+                    parameter_values[parameter.name] = [
+                        int.from_bytes(result.data[offset : offset + 2], byteorder="big", signed=False)
+                        for offset in range(0, len(result.data), 2)
+                    ]
+                self.device_channel_param_buffer = {
+                    "device_index": device_index,
+                    "channel": channel,
+                    "values": parameter_values,
+                }
+                message = (
+                    f"Device parameters read from Elemer {device_index + 1}, channel {channel}: "
+                    f"{len(parameter_values)} parameter(s)"
+                )
+                self.ui_queue.put(("status", message))
+                self.ui_queue.put(("log", message))
+            except Exception as exc:
+                message = f"Device parameter read failed: Elemer {device_index + 1}, channel {channel}: {exc}"
+                self.ui_queue.put(("status", "Device parameter read failed"))
+                self.ui_queue.put(("log", message))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _write_selected_device_channel_parameters(self) -> None:
+        if self.engineering_selected is None:
+            messagebox.showwarning("Channel parameters", "Select a target channel first.", parent=self.engineering_window)
+            return
+        if self.device_channel_param_buffer is None:
+            messagebox.showwarning(
+                "Channel parameters",
+                "Read parameters from a source channel first.",
+                parent=self.engineering_window,
+            )
+            return
+        if not self._ensure_connected():
+            return
+        if self.auto_poll_var.get() or self.temperature_poll_running:
+            messagebox.showwarning(
+                "Channel parameters",
+                "Stop measurement before writing device channel parameters.",
+                parent=self.engineering_window,
+            )
+            return
+
+        device_index, channel = self.engineering_selected
+        source_device = int(self.device_channel_param_buffer["device_index"])
+        source_channel = int(self.device_channel_param_buffer["channel"])
+        if not messagebox.askyesno(
+            "Write channel parameters",
+            f"Write device parameters from Elemer {source_device + 1}, channel {source_channel} "
+            f"to Elemer {device_index + 1}, channel {channel}?",
+            parent=self.engineering_window,
+        ):
+            return
+
+        try:
+            settings = self._settings(device_index)
+        except Exception as exc:
+            messagebox.showerror("Channel parameters", str(exc), parent=self.engineering_window)
+            return
+
+        self.status_var.set(f"Writing device parameters: Elemer {device_index + 1}, channel {channel}")
+
+        def worker() -> None:
+            try:
+                values_by_name: dict[str, list[int]] = self.device_channel_param_buffer["values"]
+                for parameter in CHANNEL_DEVICE_PARAMETERS:
+                    values = values_by_name.get(parameter.name)
+                    if not values:
+                        continue
+                    address = self._device_channel_parameter_address(parameter, channel)
+                    if parameter.register_count == 1:
+                        request = build_request(settings.slave_addr, 0x06, address, values[0])
+                        response = self._transact(request, 8, log_transaction=False)
+                        result = validate_write_single_response(response, request)
+                    else:
+                        request = build_write_multiple_registers_request(settings.slave_addr, address, values)
+                        response = self._transact(request, 8, log_transaction=False)
+                        result = validate_write_multiple_response(
+                            response,
+                            settings.slave_addr,
+                            address,
+                            len(values),
+                        )
+                    if not result.valid:
+                        raise RuntimeError(f"{parameter.name} {address:04X}: {result.message}")
+
+                self.sensor_type_cache[device_index][channel - 1] = None
+                message = (
+                    f"Device parameters written to Elemer {device_index + 1}, channel {channel} "
+                    f"from Elemer {source_device + 1}, channel {source_channel}"
+                )
+                self.ui_queue.put(("status", message))
+                self.ui_queue.put(("log", message))
+            except Exception as exc:
+                message = f"Device parameter write failed: Elemer {device_index + 1}, channel {channel}: {exc}"
+                self.ui_queue.put(("status", "Device parameter write failed"))
+                self.ui_queue.put(("log", message))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _open_logs_window(self) -> None:
         if self.logs_window is not None and self.logs_window.winfo_exists():
