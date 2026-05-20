@@ -142,6 +142,7 @@ class TelemetryMeasurement:
     calibration_a: float | None
     calibration_b: float | None
     emissivity: float | None
+    raw_temperature: float | None
     temperature: float | None
     error_code: int | None
     error_text: str
@@ -540,6 +541,7 @@ class TimescaleMeasurementWriter:
                     calibration_a DOUBLE PRECISION,
                     calibration_b DOUBLE PRECISION,
                     emissivity DOUBLE PRECISION,
+                    raw_temperature DOUBLE PRECISION,
                     temperature DOUBLE PRECISION,
                     measurement_error_code INTEGER,
                     measurement_error_text TEXT,
@@ -578,6 +580,10 @@ class TimescaleMeasurementWriter:
                     f"ALTER TABLE {DB_TABLE_NAME} "
                     f"ADD COLUMN IF NOT EXISTS {column_name} DOUBLE PRECISION"
                 )
+            cursor.execute(
+                f"ALTER TABLE {DB_TABLE_NAME} "
+                "ADD COLUMN IF NOT EXISTS raw_temperature DOUBLE PRECISION"
+            )
         connection.commit()
 
         if timescaledb_available:
@@ -624,6 +630,7 @@ class TimescaleMeasurementWriter:
                 item.calibration_a,
                 item.calibration_b,
                 item.emissivity,
+                item.raw_temperature,
                 item.temperature,
                 item.error_code,
                 item.error_text,
@@ -645,7 +652,7 @@ class TimescaleMeasurementWriter:
                         time, device_index, device_label, slave_addr, channel, global_channel,
                         sensor_num, sensor_name, sensor_used, limit_tmin, limit_tmax,
                         limit_twar, limit_tcrit, limit_temerg, color_level, sensor_kind_code,
-                        calibration_a, calibration_b, emissivity, temperature, measurement_error_code,
+                        calibration_a, calibration_b, emissivity, raw_temperature, temperature, measurement_error_code,
                         measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
                         valid, validation_message, raw_response
                     ) VALUES %s
@@ -659,11 +666,11 @@ class TimescaleMeasurementWriter:
                         time, device_index, device_label, slave_addr, channel, global_channel,
                         sensor_num, sensor_name, sensor_used, limit_tmin, limit_tmax,
                         limit_twar, limit_tcrit, limit_temerg, color_level, sensor_kind_code,
-                        calibration_a, calibration_b, emissivity, temperature, measurement_error_code,
+                        calibration_a, calibration_b, emissivity, raw_temperature, temperature, measurement_error_code,
                         measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
                         valid, validation_message, raw_response
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     """,
                     rows,
@@ -2130,6 +2137,7 @@ class ElementCheckerApp(tk.Tk):
 
         def save_db(
             temperature: float | None,
+            raw_temperature: float | None,
             error_code: int | None,
             timer_code: int | None,
             valid: bool,
@@ -2157,6 +2165,7 @@ class ElementCheckerApp(tk.Tk):
                     calibration_a=calibration_a,
                     calibration_b=calibration_b,
                     emissivity=emissivity,
+                    raw_temperature=raw_temperature,
                     temperature=temperature,
                     error_code=error_code,
                     error_text=MEASUREMENT_ERROR_TEXT.get(error_code, "Unknown" if error_code is not None else ""),
@@ -2176,7 +2185,7 @@ class ElementCheckerApp(tk.Tk):
                 self._set_temperature_color(device_index, channel, None)
                 self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {result.message}")
                 self._append_log(f"Device {device_index + 1}, sensor {channel}: invalid response - {result.message}")
-                save_db(None, None, None, False, result.message)
+                save_db(None, None, None, None, False, result.message)
                 return
 
             raw_temperature = decode_tm5104_temperature(result.data[:4])
@@ -2209,13 +2218,20 @@ class ElementCheckerApp(tk.Tk):
                     f"temperature payload = {raw_temperature:.3f} C"
                 )
 
-            save_db(temperature, error_code, timer_code, measurement_valid, "valid" if measurement_valid else f"measurement error {error_code}")
+            save_db(
+                temperature,
+                raw_temperature,
+                error_code,
+                timer_code,
+                measurement_valid,
+                "valid" if measurement_valid else f"measurement error {error_code}",
+            )
         except Exception as exc:
             self._set_temperature_label(device_index, channel, "error")
             self._set_temperature_color(device_index, channel, None)
             self.status_var.set(f"Device {device_index + 1}, sensor {channel}: decode error")
             self._append_log(f"Device {device_index + 1}, sensor {channel}: decode error - {exc}")
-            save_db(None, None, None, False, f"decode error: {exc}")
+            save_db(None, None, None, None, False, f"decode error: {exc}")
 
     def _ensure_connected(self) -> bool:
         if not self.serial_port or not self.serial_port.is_open:

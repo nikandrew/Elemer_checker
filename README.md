@@ -14,6 +14,7 @@ Engineering channel parameters are saved to `channel_settings.json` after confir
 On startup the app reads `element_checker_settings.xlsx` from the repository folder. Sensor names are taken from `Name`; sensors where `Used` is not `1` are disabled. `Tmin` and `Tmax` define the cell indicator color: blue below minimum, green in range, red above maximum.
 
 For temperature sensors, the stored value is corrected with `T = a * raw + b`. For heat flux sensors, the stored value is converted to W/m² with the Stefan-Boltzmann formula `q = epsilon * sigma * (raw + 273.15)^4`, where `sigma = 5.670374419e-8`.
+The original decoded device value before conversion is stored in `raw_temperature`.
 
 Channel limits are stored as separate JSON fields: `tmin`, `tmax`, `twar`, `tcrit`, and `temerg`. They are also written to PostgreSQL columns `limit_tmin`, `limit_tmax`, `limit_twar`, `limit_tcrit`, and `limit_temerg` with every measurement row.
 
