@@ -926,6 +926,30 @@ def excel_column_name(index: int) -> str:
     return name
 
 
+def safe_excel_text(value) -> str:
+    if isinstance(value, memoryview):
+        value = value.tobytes()
+    if isinstance(value, bytes):
+        for encoding in ("utf-8", "cp1251", "latin-1"):
+            try:
+                text = value.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            text = value.hex(" ")
+    else:
+        try:
+            text = str(value)
+        except UnicodeDecodeError:
+            text = repr(value)
+    return "".join(
+        char
+        for char in text
+        if char in "\t\n\r" or ord(char) >= 0x20
+    )
+
+
 def excel_cell_xml(row: int, column: int, value) -> str:
     cell_ref = f"{excel_column_name(column)}{row}"
     if value is None:
@@ -937,7 +961,7 @@ def excel_cell_xml(row: int, column: int, value) -> str:
     if isinstance(value, datetime):
         text = value.astimezone().strftime("%d.%m.%Y %H:%M:%S")
     else:
-        text = str(value)
+        text = safe_excel_text(value)
     return f'<c r="{cell_ref}" t="inlineStr"><is><t>{xml_escape(text)}</t></is></c>'
 
 
