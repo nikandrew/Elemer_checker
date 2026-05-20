@@ -15,7 +15,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.1,
-          "calibration_b": 0.3
+          "calibration_b": 0.3,
+          "emissivity": 1.0
         },
         {
           "num": "1_2",
@@ -28,7 +29,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.1,
-          "calibration_b": 0.5
+          "calibration_b": 0.5,
+          "emissivity": 1.0
         },
         {
           "num": "1_3",
@@ -41,7 +43,8 @@
           "temerg": null,
           "sensor_type": "Датчик теплового потока",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_4",
@@ -54,7 +57,8 @@
           "temerg": null,
           "sensor_type": "Датчик теплового потока",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_5",
@@ -67,7 +71,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_6",
@@ -80,7 +85,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_7",
@@ -93,7 +99,8 @@
           "temerg": null,
           "sensor_type": "Датчик теплового потока",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_8",
@@ -106,7 +113,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_9",
@@ -119,7 +127,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_10",
@@ -132,7 +141,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_11",
@@ -145,7 +155,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_12",
@@ -158,7 +169,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_13",
@@ -171,7 +183,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_14",
@@ -184,7 +197,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_15",
@@ -197,7 +211,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "1_16",
@@ -210,7 +225,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         }
       ]
     },
@@ -228,7 +244,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_2",
@@ -241,7 +258,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_3",
@@ -254,7 +272,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_4",
@@ -267,7 +286,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_5",
@@ -280,7 +300,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_6",
@@ -293,7 +314,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_7",
@@ -306,7 +328,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_8",
@@ -319,7 +342,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_9",
@@ -332,7 +356,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_10",
@@ -345,7 +370,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_11",
@@ -358,7 +384,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_12",
@@ -371,7 +398,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_13",
@@ -384,7 +412,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_14",
@@ -397,7 +426,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_15",
@@ -410,7 +440,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "2_16",
@@ -423,7 +454,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         }
       ]
     },
@@ -441,7 +473,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_2",
@@ -454,7 +487,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_3",
@@ -467,7 +501,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_4",
@@ -480,7 +515,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_5",
@@ -493,7 +529,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_6",
@@ -506,7 +543,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_7",
@@ -519,7 +557,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_8",
@@ -532,7 +571,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_9",
@@ -545,7 +585,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_10",
@@ -558,7 +599,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_11",
@@ -571,7 +613,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_12",
@@ -584,7 +627,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_13",
@@ -597,7 +641,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_14",
@@ -610,7 +655,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_15",
@@ -623,7 +669,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         },
         {
           "num": "3_16",
@@ -636,7 +683,8 @@
           "temerg": null,
           "sensor_type": "Термодатчик",
           "calibration_a": 1.0,
-          "calibration_b": 0.0
+          "calibration_b": 0.0,
+          "emissivity": 1.0
         }
       ]
     }

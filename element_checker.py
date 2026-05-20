@@ -82,6 +82,7 @@ DEVICE_BAUD_RATE_TO_CODE = {rate: code for code, rate in DEVICE_BAUD_CODE_TO_RAT
 SENSOR_KIND_TEMPERATURE = 1
 SENSOR_KIND_HEAT_FLUX = 2
 AUTO_SENSOR_POLL_PERIOD_S = 0.5
+STEFAN_BOLTZMANN = 5.670374419e-8
 TEMP_LOW_COLOR = "#9fd7ff"
 TEMP_OK_COLOR = "#9fe6a0"
 TEMP_HIGH_COLOR = "#ff9b9b"
@@ -118,6 +119,7 @@ class SensorSettings:
     sensor_type: str = "Термодатчик"
     calibration_a: float = 1.0
     calibration_b: float = 0.0
+    emissivity: float = 1.0
 
 
 @dataclass
@@ -136,6 +138,9 @@ class TelemetryMeasurement:
     limit_temerg: float | None
     color_level: int
     sensor_kind_code: int
+    calibration_a: float | None
+    calibration_b: float | None
+    emissivity: float | None
     temperature: float | None
     error_code: int | None
     error_text: str
@@ -523,6 +528,9 @@ class TimescaleMeasurementWriter:
                     limit_temerg DOUBLE PRECISION,
                     color_level INTEGER NOT NULL DEFAULT -1,
                     sensor_kind_code INTEGER NOT NULL DEFAULT 1,
+                    calibration_a DOUBLE PRECISION,
+                    calibration_b DOUBLE PRECISION,
+                    emissivity DOUBLE PRECISION,
                     temperature DOUBLE PRECISION,
                     measurement_error_code INTEGER,
                     measurement_error_text TEXT,
@@ -556,6 +564,11 @@ class TimescaleMeasurementWriter:
                 f"ALTER TABLE {DB_TABLE_NAME} "
                 "ADD COLUMN IF NOT EXISTS sensor_kind_code INTEGER NOT NULL DEFAULT 1"
             )
+            for column_name in ("calibration_a", "calibration_b", "emissivity"):
+                cursor.execute(
+                    f"ALTER TABLE {DB_TABLE_NAME} "
+                    f"ADD COLUMN IF NOT EXISTS {column_name} DOUBLE PRECISION"
+                )
         connection.commit()
 
         if timescaledb_available:
@@ -599,6 +612,9 @@ class TimescaleMeasurementWriter:
                 item.limit_temerg,
                 item.color_level,
                 item.sensor_kind_code,
+                item.calibration_a,
+                item.calibration_b,
+                item.emissivity,
                 item.temperature,
                 item.error_code,
                 item.error_text,
@@ -620,7 +636,7 @@ class TimescaleMeasurementWriter:
                         time, device_index, device_label, slave_addr, channel, global_channel,
                         sensor_num, sensor_name, sensor_used, limit_tmin, limit_tmax,
                         limit_twar, limit_tcrit, limit_temerg, color_level, sensor_kind_code,
-                        temperature, measurement_error_code,
+                        calibration_a, calibration_b, emissivity, temperature, measurement_error_code,
                         measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
                         valid, validation_message, raw_response
                     ) VALUES %s
@@ -634,11 +650,11 @@ class TimescaleMeasurementWriter:
                         time, device_index, device_label, slave_addr, channel, global_channel,
                         sensor_num, sensor_name, sensor_used, limit_tmin, limit_tmax,
                         limit_twar, limit_tcrit, limit_temerg, color_level, sensor_kind_code,
-                        temperature, measurement_error_code,
+                        calibration_a, calibration_b, emissivity, temperature, measurement_error_code,
                         measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
                         valid, validation_message, raw_response
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     """,
                     rows,
@@ -764,6 +780,21 @@ def color_level_for_measurement(temperature: float | None, valid: bool, sensor: 
 
 def sensor_kind_code(sensor_type: str) -> int:
     return SENSOR_KIND_HEAT_FLUX if "теплового" in sensor_type.lower() else SENSOR_KIND_TEMPERATURE
+
+
+def apply_sensor_conversion(raw_value: float, sensor: SensorSettings) -> float:
+    if sensor_kind_code(sensor.sensor_type) == SENSOR_KIND_HEAT_FLUX:
+        kelvin = raw_value + 273.15
+        if kelvin < 0:
+            raise ValueError(f"Temperature below absolute zero: {raw_value}")
+        return sensor.emissivity * STEFAN_BOLTZMANN * kelvin**4
+    return sensor.calibration_a * raw_value + sensor.calibration_b
+
+
+def measurement_coefficients(sensor: SensorSettings) -> tuple[float | None, float | None, float | None]:
+    if sensor_kind_code(sensor.sensor_type) == SENSOR_KIND_HEAT_FLUX:
+        return None, None, sensor.emissivity
+    return sensor.calibration_a, sensor.calibration_b, None
 
 
 def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | None]:
@@ -1400,6 +1431,7 @@ class ElementCheckerApp(tk.Tk):
             "temerg": tk.StringVar(value="" if sensor.temerg is None else str(sensor.temerg).replace(".", ",")),
             "calibration_a": tk.StringVar(value=str(sensor.calibration_a).replace(".", ",")),
             "calibration_b": tk.StringVar(value=str(sensor.calibration_b).replace(".", ",")),
+            "emissivity": tk.StringVar(value=str(sensor.emissivity).replace(".", ",")),
         }
 
         fields = [
@@ -1407,7 +1439,7 @@ class ElementCheckerApp(tk.Tk):
             ("Тип датчика / назначение", "sensor_type", ("Термодатчик", "Датчик теплового потока")),
             ("Признак активности", "used", ("Активен", "Выключен")),
             ("Допустимые пределы", "limits", "limits"),
-            ("Линейная калибровка", "calibration", "calibration"),
+            ("Преобразование измерения", "calibration", "calibration"),
         ]
 
         for row, (label, key, editor) in enumerate(fields):
@@ -1425,13 +1457,32 @@ class ElementCheckerApp(tk.Tk):
                 calibration_frame.columnconfigure(1, weight=1)
                 calibration_frame.columnconfigure(3, weight=1)
                 ttk.Label(calibration_frame, text="a=").grid(row=0, column=0, sticky="w")
-                ttk.Entry(calibration_frame, textvariable=self.engineering_vars["calibration_a"], width=12).grid(
+                calibration_a_entry = ttk.Entry(calibration_frame, textvariable=self.engineering_vars["calibration_a"], width=12)
+                calibration_a_entry.grid(
                     row=0, column=1, padx=(4, 12), sticky="ew"
                 )
                 ttk.Label(calibration_frame, text="b=").grid(row=0, column=2, sticky="w")
-                ttk.Entry(calibration_frame, textvariable=self.engineering_vars["calibration_b"], width=12).grid(
+                calibration_b_entry = ttk.Entry(calibration_frame, textvariable=self.engineering_vars["calibration_b"], width=12)
+                calibration_b_entry.grid(
                     row=0, column=3, padx=(4, 0), sticky="ew"
                 )
+                ttk.Label(calibration_frame, text="ε=").grid(row=1, column=0, pady=(6, 0), sticky="w")
+                emissivity_entry = ttk.Entry(calibration_frame, textvariable=self.engineering_vars["emissivity"], width=12)
+                emissivity_entry.grid(row=1, column=1, padx=(4, 12), pady=(6, 0), sticky="ew")
+                ttk.Label(calibration_frame, text="Степень черноты").grid(
+                    row=1, column=2, columnspan=2, pady=(6, 0), sticky="w"
+                )
+
+                def refresh_conversion_inputs(*_args) -> None:
+                    heat_flux = sensor_kind_code(self.engineering_vars["sensor_type"].get()) == SENSOR_KIND_HEAT_FLUX
+                    calibration_state = "disabled" if heat_flux else "normal"
+                    emissivity_state = "normal" if heat_flux else "disabled"
+                    calibration_a_entry.configure(state=calibration_state)
+                    calibration_b_entry.configure(state=calibration_state)
+                    emissivity_entry.configure(state=emissivity_state)
+
+                self.engineering_vars["sensor_type"].trace_add("write", refresh_conversion_inputs)
+                refresh_conversion_inputs()
             elif editor == "limits":
                 limits_frame = ttk.LabelFrame(self.engineering_detail_frame, text="Допустимые пределы")
                 limits_frame.grid(row=row, column=1, padx=8, pady=5, sticky="ew")
@@ -1487,6 +1538,9 @@ class ElementCheckerApp(tk.Tk):
 
             calibration_a = float(self.engineering_vars["calibration_a"].get().replace(",", "."))
             calibration_b = float(self.engineering_vars["calibration_b"].get().replace(",", "."))
+            emissivity = float(self.engineering_vars["emissivity"].get().replace(",", "."))
+            if not 0 < emissivity <= 1:
+                raise ValueError("Emissivity must be greater than 0 and not greater than 1")
             tmin = parse_limit("tmin")
             tmax = parse_limit("tmax")
             twar = parse_limit("twar")
@@ -1514,6 +1568,7 @@ class ElementCheckerApp(tk.Tk):
         sensor.temerg = temerg
         sensor.calibration_a = calibration_a
         sensor.calibration_b = calibration_b
+        sensor.emissivity = emissivity
         try:
             save_channel_settings(self.channel_settings_path, self.sensor_settings)
         except Exception as exc:
@@ -1932,6 +1987,7 @@ class ElementCheckerApp(tk.Tk):
         ) -> None:
             color_level = color_level_for_measurement(temperature, valid, sensor)
             kind_code = sensor_kind_code(sensor.sensor_type)
+            calibration_a, calibration_b, emissivity = measurement_coefficients(sensor)
             self.db_writer.enqueue(
                 TelemetryMeasurement(
                     timestamp=timestamp,
@@ -1948,6 +2004,9 @@ class ElementCheckerApp(tk.Tk):
                     limit_temerg=sensor.temerg,
                     color_level=color_level,
                     sensor_kind_code=kind_code,
+                    calibration_a=calibration_a,
+                    calibration_b=calibration_b,
+                    emissivity=emissivity,
                     temperature=temperature,
                     error_code=error_code,
                     error_text=MEASUREMENT_ERROR_TEXT.get(error_code, "Unknown" if error_code is not None else ""),
@@ -1970,20 +2029,24 @@ class ElementCheckerApp(tk.Tk):
                 save_db(None, None, None, False, result.message)
                 return
 
-            temperature = decode_tm5104_temperature(result.data[:4])
+            raw_temperature = decode_tm5104_temperature(result.data[:4])
             error_code = decode_ushort(result.data[4:6])
             timer_code = decode_ushort(result.data[6:8])
             measurement_valid = error_code == 0
+            temperature = apply_sensor_conversion(raw_temperature, sensor) if measurement_valid else None
             history = self.temperature_history[device_index][channel - 1]
-            history.append(temperature)
+            if temperature is not None:
+                history.append(temperature)
             del history[:-10]
 
             if measurement_valid:
-                self._set_temperature_label(device_index, channel, f"{temperature:.1f} C")
+                unit = "W/m²" if sensor_kind_code(sensor.sensor_type) == SENSOR_KIND_HEAT_FLUX else "C"
+                self._set_temperature_label(device_index, channel, f"{temperature:.1f} {unit}")
                 self._set_temperature_color(device_index, channel, temperature)
-                self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {temperature:.2f} C")
+                self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {temperature:.2f} {unit}")
                 self._append_log(
-                    f"Device {device_index + 1}, sensor {channel}: valid, temperature = {temperature:.3f} C, "
+                    f"Device {device_index + 1}, sensor {channel}: valid, value = {temperature:.3f} {unit}, "
+                    f"raw = {raw_temperature:.3f} C, "
                     f"sensor type = {sensor_type_code if sensor_type_code is not None else 'unknown'} {sensor_type_text}".rstrip()
                 )
             else:
@@ -1993,7 +2056,7 @@ class ElementCheckerApp(tk.Tk):
                 self.status_var.set(f"Device {device_index + 1}, sensor {channel}: measurement error {error_code}")
                 self._append_log(
                     f"Device {device_index + 1}, sensor {channel}: measurement error {error_code} ({error_text}), "
-                    f"temperature payload = {temperature:.3f} C"
+                    f"temperature payload = {raw_temperature:.3f} C"
                 )
 
             save_db(temperature, error_code, timer_code, measurement_valid, "valid" if measurement_valid else f"measurement error {error_code}")
