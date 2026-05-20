@@ -39,7 +39,6 @@ During polling, every sensor response is immediately saved to PostgreSQL/Timesca
 The app reads temperature and measurement error from `0520 + 4 * (channel - 1)` and sensor type from `0860 + channel - 1`.
 
 When automatic measurement is stopped with `Stop measurement`, the app exports all database rows collected during that measurement session to `measurements/*.xlsx` and shows a save confirmation. The main window also has an Excel export panel for the last hour, last 6 hours, today, or a custom `dd.mm.yy HH:MM` period.
-Excel export skips the newest 100 rows by default to avoid rows that are still being written; override this with `ELEMER_EXPORT_SKIP_RECENT_ROWS`.
 
 Default database settings:
 

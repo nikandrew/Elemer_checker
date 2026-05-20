@@ -70,7 +70,6 @@ DEVICE_COUNT = 3
 SETTINGS_FILE = "element_checker_settings.xlsx"
 CHANNEL_SETTINGS_FILE = "channel_settings.json"
 DB_TABLE_NAME = "sensor_measurements"
-EXPORT_SKIP_RECENT_ROWS = int(os.getenv("ELEMER_EXPORT_SKIP_RECENT_ROWS", "100"))
 DEVICE_BAUD_REGISTER_ADDRESS = 0x0409
 DEVICE_BAUD_CODE_TO_RATE = {
     4: 2400,
@@ -2376,15 +2375,9 @@ class ElementCheckerApp(tk.Tk):
         ]
         select_parts = [f'"{column}"' for column in db_columns]
         query = (
-            "WITH selected_rows AS ("
-            f"SELECT {', '.join(select_parts)}, "
-            'row_number() OVER (ORDER BY "time" DESC, "global_channel" DESC) AS export_recent_row '
-            f"FROM {DB_TABLE_NAME} "
-            'WHERE "time" >= %s AND "time" <= %s'
-            ") "
             f"SELECT {', '.join(select_parts)} "
-            "FROM selected_rows "
-            "WHERE export_recent_row > %s "
+            f"FROM {DB_TABLE_NAME} "
+            'WHERE "time" >= %s AND "time" <= %s '
             'ORDER BY "time" ASC, "global_channel" ASC'
         )
 
@@ -2399,7 +2392,7 @@ class ElementCheckerApp(tk.Tk):
             with connection.cursor() as cursor:
                 cursor.execute(
                     query,
-                    (start.astimezone(timezone.utc), end.astimezone(timezone.utc), EXPORT_SKIP_RECENT_ROWS),
+                    (start.astimezone(timezone.utc), end.astimezone(timezone.utc)),
                 )
                 fetched_rows = cursor.fetchall()
                 db_result_columns = [getattr(description, "name", description[0]) for description in cursor.description]
