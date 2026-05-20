@@ -1012,6 +1012,8 @@ class ElementCheckerApp(tk.Tk):
         self.logs_text: tk.Text | None = None
         self.log_lines: list[str] = []
         self.auto_poll_next_due: dict[tuple[int, int], float] = {}
+        self.export_start_entry: ttk.Entry | None = None
+        self.export_end_entry: ttk.Entry | None = None
         self.engineering_channel_buttons: list[list[tk.Button]] = []
         self.engineering_detail_frame: ttk.LabelFrame | None = None
         self.engineering_vars: dict[str, tk.Variable] = {}
@@ -1164,17 +1166,21 @@ class ElementCheckerApp(tk.Tk):
             width=18,
         )
         export_mode.grid(row=0, column=1, padx=8, pady=6, sticky="ew")
+        export_mode.bind("<<ComboboxSelected>>", lambda _event: self._refresh_export_period_state())
 
         ttk.Label(export_frame, text="С").grid(row=0, column=2, padx=8, pady=6, sticky="w")
-        ttk.Entry(export_frame, textvariable=self.export_start_var, width=16).grid(row=0, column=3, padx=8, pady=6, sticky="ew")
+        self.export_start_entry = ttk.Entry(export_frame, textvariable=self.export_start_var, width=16)
+        self.export_start_entry.grid(row=0, column=3, padx=8, pady=6, sticky="ew")
         ttk.Label(export_frame, text="По").grid(row=0, column=4, padx=8, pady=6, sticky="w")
-        ttk.Entry(export_frame, textvariable=self.export_end_var, width=16).grid(row=0, column=5, padx=8, pady=6, sticky="ew")
+        self.export_end_entry = ttk.Entry(export_frame, textvariable=self.export_end_var, width=16)
+        self.export_end_entry.grid(row=0, column=5, padx=8, pady=6, sticky="ew")
         ttk.Button(export_frame, text="Выгрузить данные", command=self._export_selected_period).grid(
             row=0, column=6, padx=8, pady=6, sticky="ew"
         )
         ttk.Label(export_frame, textvariable=self.export_status_var, anchor="w").grid(
             row=1, column=0, columnspan=7, padx=8, pady=(0, 6), sticky="ew"
         )
+        self._refresh_export_period_state()
 
     def _sensor_trend(self, device_index: int, channel: int) -> str:
         history = self.temperature_history[device_index][channel - 1]
@@ -2213,6 +2219,13 @@ class ElementCheckerApp(tk.Tk):
             self.start_address_var.set(f"{value:X}")
         else:
             self.start_address_var.set(str(value))
+
+    def _refresh_export_period_state(self) -> None:
+        state = "normal" if self.export_mode_var.get() == "За период" else "disabled"
+        if self.export_start_entry is not None:
+            self.export_start_entry.configure(state=state)
+        if self.export_end_entry is not None:
+            self.export_end_entry.configure(state=state)
 
     def _parse_export_datetime(self, value: str) -> datetime:
         value = value.strip()
