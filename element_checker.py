@@ -2347,7 +2347,25 @@ class ElementCheckerApp(tk.Tk):
             "validation_message",
             "raw_response",
         ]
-        select_parts = [f'"{column}"' for column in export_columns]
+        text_columns = {
+            "device_label",
+            "sensor_num",
+            "sensor_name",
+            "measurement_error_text",
+            "sensor_type_text",
+            "validation_message",
+            "raw_response",
+        }
+        select_parts = []
+        for column in export_columns:
+            quoted = f'"{column}"'
+            if column in text_columns:
+                select_parts.append(
+                    f"CASE WHEN {quoted} IS NULL THEN NULL "
+                    f"ELSE encode(convert_to({quoted}, 'UTF8'), 'hex') END AS {quoted}"
+                )
+            else:
+                select_parts.append(quoted)
         query = (
             f"SELECT {', '.join(select_parts)} "
             f"FROM {DB_TABLE_NAME} "
@@ -2355,36 +2373,32 @@ class ElementCheckerApp(tk.Tk):
             'ORDER BY "time" ASC, "global_channel" ASC'
         )
 
-        last_error: Exception | None = None
-        rows = []
-        columns = export_columns
-        for client_encoding in ("UTF8", "WIN1251", "LATIN1"):
-            connection = None
-            try:
-                if psycopg is not None:
-                    connection = psycopg.connect(**self.db_writer.connection_kwargs)
-                elif psycopg2 is not None:
-                    connection = psycopg2.connect(**self.db_writer.connection_kwargs)
-                else:
-                    raise RuntimeError("PostgreSQL driver is not installed")
-                with connection.cursor() as cursor:
-                    cursor.execute(f"SET client_encoding TO '{client_encoding}'")
-                    cursor.execute(
-                        query,
-                        (start.astimezone(timezone.utc), end.astimezone(timezone.utc)),
-                    )
-                    rows = cursor.fetchall()
-                    columns = [getattr(description, "name", description[0]) for description in cursor.description]
-                last_error = None
-                break
-            except UnicodeDecodeError as exc:
-                last_error = exc
-            finally:
-                if connection is not None:
-                    connection.close()
+        if psycopg is not None:
+            connection = psycopg.connect(**self.db_writer.connection_kwargs)
+        elif psycopg2 is not None:
+            connection = psycopg2.connect(**self.db_writer.connection_kwargs)
+        else:
+            raise RuntimeError("PostgreSQL driver is not installed")
 
-        if last_error is not None:
-            raise last_error
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    query,
+                    (start.astimezone(timezone.utc), end.astimezone(timezone.utc)),
+                )
+                fetched_rows = cursor.fetchall()
+                columns = [getattr(description, "name", description[0]) for description in cursor.description]
+        finally:
+            connection.close()
+
+        text_indexes = [index for index, column in enumerate(columns) if column in text_columns]
+        rows = []
+        for row in fetched_rows:
+            values = list(row)
+            for index in text_indexes:
+                if values[index] is not None:
+                    values[index] = bytes.fromhex(str(values[index])).decode("utf-8", errors="replace")
+            rows.append(tuple(values))
 
         export_dir = Path(__file__).with_name("measurements")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
