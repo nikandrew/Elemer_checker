@@ -2347,25 +2347,31 @@ class ElementCheckerApp(tk.Tk):
             "validation_message",
             "raw_response",
         ]
-        text_columns = {
-            "device_label",
-            "sensor_num",
-            "sensor_name",
-            "measurement_error_text",
-            "sensor_type_text",
-            "validation_message",
-            "raw_response",
-        }
-        select_parts = []
-        for column in export_columns:
-            quoted = f'"{column}"'
-            if column in text_columns:
-                select_parts.append(
-                    f"CASE WHEN {quoted} IS NULL THEN NULL "
-                    f"ELSE encode(convert_to({quoted}, 'UTF8'), 'hex') END AS {quoted}"
-                )
-            else:
-                select_parts.append(quoted)
+        db_columns = [
+            "time",
+            "device_index",
+            "slave_addr",
+            "channel",
+            "global_channel",
+            "sensor_used",
+            "limit_tmin",
+            "limit_tmax",
+            "limit_twar",
+            "limit_tcrit",
+            "limit_temerg",
+            "color_level",
+            "sensor_kind_code",
+            "calibration_a",
+            "calibration_b",
+            "emissivity",
+            "raw_temperature",
+            "temperature",
+            "measurement_error_code",
+            "timer_code",
+            "sensor_type_code",
+            "valid",
+        ]
+        select_parts = [f'"{column}"' for column in db_columns]
         query = (
             f"SELECT {', '.join(select_parts)} "
             f"FROM {DB_TABLE_NAME} "
@@ -2387,23 +2393,37 @@ class ElementCheckerApp(tk.Tk):
                     (start.astimezone(timezone.utc), end.astimezone(timezone.utc)),
                 )
                 fetched_rows = cursor.fetchall()
-                columns = [getattr(description, "name", description[0]) for description in cursor.description]
+                db_result_columns = [getattr(description, "name", description[0]) for description in cursor.description]
         finally:
             connection.close()
 
-        text_indexes = [index for index, column in enumerate(columns) if column in text_columns]
         rows = []
         for row in fetched_rows:
-            values = list(row)
-            for index in text_indexes:
-                if values[index] is not None:
-                    values[index] = bytes.fromhex(str(values[index])).decode("utf-8", errors="replace")
-            rows.append(tuple(values))
+            record = dict(zip(db_result_columns, row))
+            device_index = int(record["device_index"] or 0)
+            channel = int(record["channel"] or 0)
+            sensor = None
+            if 1 <= device_index <= DEVICE_COUNT and 1 <= channel <= TELEMETRY_CHANNELS:
+                sensor = self.sensor_settings[device_index - 1][channel - 1]
+            error_code = record.get("measurement_error_code")
+            sensor_type_code = record.get("sensor_type_code")
+            valid = bool(record.get("valid"))
+            row_map = {
+                **record,
+                "device_label": f"Elemer {device_index}" if device_index else "",
+                "sensor_num": sensor.num if sensor is not None else "",
+                "sensor_name": sensor.name if sensor is not None else "",
+                "measurement_error_text": MEASUREMENT_ERROR_TEXT.get(error_code, "Unknown" if error_code is not None else ""),
+                "sensor_type_text": SENSOR_TYPE_TEXT.get(sensor_type_code, "Unknown" if sensor_type_code is not None else ""),
+                "validation_message": "valid" if valid else (f"measurement error {error_code}" if error_code is not None else ""),
+                "raw_response": "",
+            }
+            rows.append(tuple(row_map.get(column) for column in export_columns))
 
         export_dir = Path(__file__).with_name("measurements")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         path = export_dir / f"elemer_measurements_{label}_{timestamp}.xlsx"
-        write_xlsx(path, columns, rows)
+        write_xlsx(path, export_columns, rows)
         return path, len(rows)
 
     def _start_auto_poll(self) -> None:
