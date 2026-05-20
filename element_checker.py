@@ -9,6 +9,7 @@ import tkinter as tk
 import zipfile
 import json
 import os
+import traceback
 from dataclasses import dataclass
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
@@ -2312,7 +2313,8 @@ class ElementCheckerApp(tk.Tk):
                 path, row_count = self._export_measurements_to_excel(start, end, label)
                 self.ui_queue.put(("export_done", f"ok|{path}|{row_count}"))
             except Exception as exc:
-                self.ui_queue.put(("export_done", f"error|{exc}"))
+                details = traceback.format_exc()
+                self.ui_queue.put(("export_done", f"error|{exc}|{details}"))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2550,8 +2552,12 @@ class ElementCheckerApp(tk.Tk):
                     messagebox.showinfo("Excel export", f"Data saved to file:\n{path}")
                 else:
                     error = parts[1] if len(parts) > 1 else "unknown error"
+                    details = parts[2] if len(parts) > 2 else ""
+                    if details:
+                        self._append_log("Excel export traceback:\n" + details)
                     self.export_status_var.set(f"Export failed: {error}")
-                    messagebox.showerror("Excel export error", error)
+                    shown_details = details[-1200:] if details else ""
+                    messagebox.showerror("Excel export error", f"{error}\n\n{shown_details}".strip())
             else:
                 self._append_log(value)
         self.after(20, self._drain_ui_queue)
