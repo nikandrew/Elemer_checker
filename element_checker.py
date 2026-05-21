@@ -763,9 +763,11 @@ def _xlsx_rows(path: Path) -> list[dict[str, str]]:
 
 
 def _used_value(value: str) -> bool:
-    value = value.strip()
-    if value == "1":
+    value = value.strip().lower()
+    if value in {"1", "true", "yes", "y", "да", "активен"}:
         return True
+    if value in {"0", "false", "no", "n", "нет", "выключен"}:
+        return False
     try:
         return float(value) == 1.0
     except ValueError:
@@ -924,6 +926,117 @@ def save_channel_settings(path: Path, sensors: list[list[SensorSettings]]) -> No
         ],
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+CHANNEL_SETTINGS_EXCEL_COLUMNS = [
+    "device",
+    "channel",
+    "num",
+    "name",
+    "used",
+    "sensor_type",
+    "tmin",
+    "tmax",
+    "twar",
+    "tcrit",
+    "temerg",
+    "calibration_a",
+    "calibration_b",
+    "emissivity",
+]
+
+
+def _row_value(row: dict[str, str], headers: dict[str, str], name: str) -> str:
+    column = headers.get(name.lower())
+    return row.get(column, "").strip() if column is not None else ""
+
+
+def load_channel_settings_excel(path: Path, sensors: list[list[SensorSettings]]) -> str | None:
+    try:
+        rows = _xlsx_rows(path)
+        if not rows:
+            return f"{path.name}: Excel file is empty"
+
+        header_row = rows[0]
+        headers = {value.strip().lower(): column for column, value in header_row.items() if value.strip()}
+        required = {"device", "channel"}
+        missing = sorted(required - set(headers))
+        if missing:
+            return f"{path.name}: missing column(s): {', '.join(missing)}"
+
+        for row in rows[1:]:
+            try:
+                device_index = int(float(_row_value(row, headers, "device"))) - 1
+                channel = int(float(_row_value(row, headers, "channel")))
+            except ValueError:
+                continue
+            if not 0 <= device_index < DEVICE_COUNT or not 1 <= channel <= TELEMETRY_CHANNELS:
+                continue
+
+            sensor = sensors[device_index][channel - 1]
+            text_fields = {
+                "num": "num",
+                "name": "name",
+                "sensor_type": "sensor_type",
+            }
+            for column_name, attr_name in text_fields.items():
+                value = _row_value(row, headers, column_name)
+                if value:
+                    setattr(sensor, attr_name, value)
+
+            used_value = _row_value(row, headers, "used")
+            if used_value:
+                sensor.used = _used_value(used_value)
+
+            float_fields = (
+                "tmin",
+                "tmax",
+                "twar",
+                "tcrit",
+                "temerg",
+                "calibration_a",
+                "calibration_b",
+                "emissivity",
+            )
+            for field_name in float_fields:
+                if field_name not in headers:
+                    continue
+                raw_value = _row_value(row, headers, field_name)
+                if raw_value:
+                    value = _optional_float(raw_value)
+                    if value is not None:
+                        setattr(sensor, field_name, value)
+                elif field_name in {"tmin", "tmax", "twar", "tcrit", "temerg"}:
+                    setattr(sensor, field_name, None)
+    except Exception as exc:
+        return f"{path.name}: failed to read channel settings Excel: {exc}"
+
+    return None
+
+
+def save_channel_settings_excel(path: Path, sensors: list[list[SensorSettings]]) -> None:
+    rows = []
+    for device_index, device_settings in enumerate(sensors):
+        for channel_index, sensor in enumerate(device_settings):
+            rows.append(
+                (
+                    device_index + 1,
+                    channel_index + 1,
+                    sensor.num,
+                    sensor.name,
+                    sensor.used,
+                    sensor.sensor_type,
+                    sensor.tmin,
+                    sensor.tmax,
+                    sensor.twar,
+                    sensor.tcrit,
+                    sensor.temerg,
+                    sensor.calibration_a,
+                    sensor.calibration_b,
+                    sensor.emissivity,
+                )
+            )
+    write_xlsx(path, CHANNEL_SETTINGS_EXCEL_COLUMNS, rows)
 
 
 def excel_column_name(index: int) -> str:
@@ -1531,11 +1644,19 @@ class ElementCheckerApp(tk.Tk):
         json_frame.grid(row=0, column=0, pady=(0, 8), sticky="ew")
         json_frame.columnconfigure(0, weight=1)
         json_frame.columnconfigure(1, weight=1)
+        json_frame.columnconfigure(2, weight=1)
+        json_frame.columnconfigure(3, weight=1)
         ttk.Button(json_frame, text="Загрузить JSON", command=self._load_channel_settings_json).grid(
             row=0, column=0, padx=6, pady=6, sticky="ew"
         )
         ttk.Button(json_frame, text="Сохранить JSON как...", command=self._save_channel_settings_json_as).grid(
             row=0, column=1, padx=6, pady=6, sticky="ew"
+        )
+        ttk.Button(json_frame, text="Загрузить Excel", command=self._load_channel_settings_excel).grid(
+            row=1, column=0, columnspan=2, padx=6, pady=(0, 6), sticky="ew"
+        )
+        ttk.Button(json_frame, text="Сохранить Excel как...", command=self._save_channel_settings_excel_as).grid(
+            row=1, column=2, columnspan=2, padx=6, pady=(0, 6), sticky="ew"
         )
         for device_index in range(DEVICE_COUNT):
             group_frame = ttk.LabelFrame(channels_frame, text=f"Элемер №{device_index + 1}")
@@ -1641,6 +1762,67 @@ class ElementCheckerApp(tk.Tk):
         self.status_var.set(message)
         self._append_log(message)
         messagebox.showinfo("JSON settings", f"Настройки сохранены:\n{path}", parent=self.engineering_window)
+
+    def _load_channel_settings_excel(self) -> None:
+        if self.auto_poll_var.get() or self.temperature_poll_running:
+            messagebox.showwarning(
+                "Excel settings",
+                "Stop measurement before loading channel settings.",
+                parent=self.engineering_window,
+            )
+            return
+
+        filename = filedialog.askopenfilename(
+            parent=self.engineering_window,
+            title="Загрузить настройки каналов из Excel",
+            initialdir=str(self.channel_settings_path.parent),
+            filetypes=(("Excel files", "*.xlsx"), ("All files", "*.*")),
+        )
+        if not filename:
+            return
+
+        path = Path(filename)
+        warning = load_channel_settings_excel(path, self.sensor_settings)
+        if warning:
+            messagebox.showerror("Excel load error", warning, parent=self.engineering_window)
+            return
+
+        try:
+            save_channel_settings(self.channel_settings_path, self.sensor_settings)
+        except Exception as exc:
+            messagebox.showerror("JSON save error", str(exc), parent=self.engineering_window)
+            return
+
+        self.auto_poll_next_due = {}
+        self._refresh_all_channel_ui()
+        message = f"Channel settings loaded from Excel and saved to JSON: {path}"
+        self.status_var.set(message)
+        self._append_log(message)
+        messagebox.showinfo("Excel settings", f"Настройки загружены из Excel и сохранены в JSON:\n{path}", parent=self.engineering_window)
+
+    def _save_channel_settings_excel_as(self) -> None:
+        filename = filedialog.asksaveasfilename(
+            parent=self.engineering_window,
+            title="Сохранить настройки каналов в Excel",
+            initialdir=str(self.channel_settings_path.parent),
+            initialfile="channel_settings.xlsx",
+            defaultextension=".xlsx",
+            filetypes=(("Excel files", "*.xlsx"), ("All files", "*.*")),
+        )
+        if not filename:
+            return
+
+        path = Path(filename)
+        try:
+            save_channel_settings_excel(path, self.sensor_settings)
+        except Exception as exc:
+            messagebox.showerror("Excel save error", str(exc), parent=self.engineering_window)
+            return
+
+        message = f"Channel settings saved to Excel: {path}"
+        self.status_var.set(message)
+        self._append_log(message)
+        messagebox.showinfo("Excel settings", f"Настройки сохранены в Excel:\n{path}", parent=self.engineering_window)
 
     def _close_engineering_window(self) -> None:
         if self.engineering_window is not None:
