@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 from xml.etree import ElementTree
 from xml.sax.saxutils import escape as xml_escape
 
@@ -1526,9 +1526,20 @@ class ElementCheckerApp(tk.Tk):
         channels_frame = ttk.Frame(window)
         channels_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
         channels_frame.columnconfigure(0, weight=1)
+
+        json_frame = ttk.LabelFrame(channels_frame, text="JSON настройки каналов")
+        json_frame.grid(row=0, column=0, pady=(0, 8), sticky="ew")
+        json_frame.columnconfigure(0, weight=1)
+        json_frame.columnconfigure(1, weight=1)
+        ttk.Button(json_frame, text="Загрузить JSON", command=self._load_channel_settings_json).grid(
+            row=0, column=0, padx=6, pady=6, sticky="ew"
+        )
+        ttk.Button(json_frame, text="Сохранить JSON как...", command=self._save_channel_settings_json_as).grid(
+            row=0, column=1, padx=6, pady=6, sticky="ew"
+        )
         for device_index in range(DEVICE_COUNT):
             group_frame = ttk.LabelFrame(channels_frame, text=f"Элемер №{device_index + 1}")
-            group_frame.grid(row=device_index, column=0, pady=6, sticky="ew")
+            group_frame.grid(row=device_index + 1, column=0, pady=6, sticky="ew")
             for column in range(4):
                 group_frame.columnconfigure(column, weight=1)
 
@@ -1559,6 +1570,77 @@ class ElementCheckerApp(tk.Tk):
         ttk.Label(self.engineering_detail_frame, text="Выберите канал слева").grid(
             row=0, column=0, padx=12, pady=12, sticky="w"
         )
+
+    def _refresh_all_channel_ui(self) -> None:
+        for device_index in range(DEVICE_COUNT):
+            for channel in range(1, TELEMETRY_CHANNELS + 1):
+                self._apply_sensor_ui_state(device_index, channel)
+        if self.engineering_channel_buttons:
+            self._refresh_engineering_selection()
+        if self.engineering_selected is not None and self.engineering_detail_frame is not None:
+            device_index, channel = self.engineering_selected
+            self._show_engineering_channel(device_index, channel)
+
+    def _load_channel_settings_json(self) -> None:
+        if self.auto_poll_var.get() or self.temperature_poll_running:
+            messagebox.showwarning(
+                "JSON settings",
+                "Stop measurement before loading channel settings.",
+                parent=self.engineering_window,
+            )
+            return
+
+        filename = filedialog.askopenfilename(
+            parent=self.engineering_window,
+            title="Загрузить настройки каналов из JSON",
+            initialdir=str(self.channel_settings_path.parent),
+            filetypes=(("JSON files", "*.json"), ("All files", "*.*")),
+        )
+        if not filename:
+            return
+
+        path = Path(filename)
+        warning = load_channel_settings(path, self.sensor_settings)
+        if warning:
+            messagebox.showerror("JSON load error", warning, parent=self.engineering_window)
+            return
+
+        try:
+            save_channel_settings(self.channel_settings_path, self.sensor_settings)
+        except Exception as exc:
+            messagebox.showerror("JSON save error", str(exc), parent=self.engineering_window)
+            return
+
+        self.auto_poll_next_due = {}
+        self._refresh_all_channel_ui()
+        message = f"Channel settings loaded from JSON: {path}"
+        self.status_var.set(message)
+        self._append_log(message)
+        messagebox.showinfo("JSON settings", f"Настройки загружены:\n{path}", parent=self.engineering_window)
+
+    def _save_channel_settings_json_as(self) -> None:
+        filename = filedialog.asksaveasfilename(
+            parent=self.engineering_window,
+            title="Сохранить настройки каналов в JSON",
+            initialdir=str(self.channel_settings_path.parent),
+            initialfile=CHANNEL_SETTINGS_FILE,
+            defaultextension=".json",
+            filetypes=(("JSON files", "*.json"), ("All files", "*.*")),
+        )
+        if not filename:
+            return
+
+        path = Path(filename)
+        try:
+            save_channel_settings(path, self.sensor_settings)
+        except Exception as exc:
+            messagebox.showerror("JSON save error", str(exc), parent=self.engineering_window)
+            return
+
+        message = f"Channel settings saved to JSON: {path}"
+        self.status_var.set(message)
+        self._append_log(message)
+        messagebox.showinfo("JSON settings", f"Настройки сохранены:\n{path}", parent=self.engineering_window)
 
     def _close_engineering_window(self) -> None:
         if self.engineering_window is not None:
