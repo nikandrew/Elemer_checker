@@ -5,6 +5,7 @@ Python/Tkinter utility for Modbus RTU requests and TM5104 telemetry.
 The main window contains connection controls, status, and three compact TM5104 telemetry panels. Port settings, shared Modbus settings, and the three device slave addresses are configured from the Settings window.
 
 Logs are shown in a separate Logs window.
+User actions are shown in a separate User actions window and are immediately appended to `logs/user_actions.log`, so the last clicked buttons and selected settings files remain visible even if the application stops unexpectedly.
 
 The Settings window also contains manual Elemer baudrate controls. The app reads device register `0409` with function `03` to check the current speed code and writes the same register with function `06` to set a new speed. Supported device speed codes are `4` = 2400, `5` = 4800, `6` = 9600, `7` = 19200, `8` = 38400, `9` = 57600, `10` = 115200 bit/s.
 

@@ -1154,8 +1154,12 @@ class ElementCheckerApp(tk.Tk):
         self.settings_window: tk.Toplevel | None = None
         self.engineering_window: tk.Toplevel | None = None
         self.logs_window: tk.Toplevel | None = None
+        self.user_actions_window: tk.Toplevel | None = None
         self.logs_text: tk.Text | None = None
+        self.user_actions_text: tk.Text | None = None
         self.log_lines: list[str] = []
+        self.user_action_lines: list[str] = []
+        self.user_action_log_path = Path(__file__).with_name("logs") / "user_actions.log"
         self.auto_poll_next_due: dict[tuple[int, int], float] = {}
         self.export_start_entry: ttk.Entry | None = None
         self.export_end_entry: ttk.Entry | None = None
@@ -1204,6 +1208,8 @@ class ElementCheckerApp(tk.Tk):
         self.quantity_var.trace_add("write", lambda *_args: self._refresh_expected())
 
         self._build_ui()
+        self.bind_all("<ButtonRelease-1>", self._log_button_click, add="+")
+        self._append_user_action("Application started")
         if self.sensor_settings_warning:
             self._append_log(self.sensor_settings_warning)
         self._refresh_expected()
@@ -1215,7 +1221,7 @@ class ElementCheckerApp(tk.Tk):
 
         top_frame = ttk.Frame(self)
         top_frame.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="ew")
-        top_frame.columnconfigure(5, weight=1)
+        top_frame.columnconfigure(6, weight=1)
 
         self.connect_button = ttk.Button(top_frame, text="Connect port", command=self._toggle_port)
         self.connect_button.grid(row=0, column=0, padx=(0, 8), sticky="w")
@@ -1224,9 +1230,12 @@ class ElementCheckerApp(tk.Tk):
             row=0, column=2, padx=(0, 12), sticky="w"
         )
         ttk.Button(top_frame, text="Logs", command=self._open_logs_window).grid(row=0, column=3, padx=(0, 12), sticky="w")
+        ttk.Button(top_frame, text="User actions", command=self._open_user_actions_window).grid(
+            row=0, column=4, padx=(0, 12), sticky="w"
+        )
 
         self.status_var = tk.StringVar(value="Port disconnected")
-        ttk.Label(top_frame, textvariable=self.status_var, anchor="w").grid(row=0, column=5, sticky="ew")
+        ttk.Label(top_frame, textvariable=self.status_var, anchor="w").grid(row=0, column=6, sticky="ew")
 
         telemetry_frame = ttk.LabelFrame(self, text="TM5104 telemetry")
         telemetry_frame.grid(row=1, column=0, padx=12, pady=6, sticky="ew")
@@ -1718,17 +1727,21 @@ class ElementCheckerApp(tk.Tk):
             filetypes=(("JSON files", "*.json"), ("All files", "*.*")),
         )
         if not filename:
+            self._append_user_action("JSON load canceled")
             return
 
         path = Path(filename)
+        self._append_user_action(f"JSON load selected: {path}")
         warning = load_channel_settings(path, self.sensor_settings)
         if warning:
+            self._append_user_action(f"JSON load failed: {path}: {warning}")
             messagebox.showerror("JSON load error", warning, parent=self.engineering_window)
             return
 
         try:
             save_channel_settings(self.channel_settings_path, self.sensor_settings)
         except Exception as exc:
+            self._append_user_action(f"JSON load failed while saving working settings: {exc}")
             messagebox.showerror("JSON save error", str(exc), parent=self.engineering_window)
             return
 
@@ -1737,6 +1750,7 @@ class ElementCheckerApp(tk.Tk):
         message = f"Channel settings loaded from JSON: {path}"
         self.status_var.set(message)
         self._append_log(message)
+        self._append_user_action(message)
         messagebox.showinfo("JSON settings", f"Настройки загружены:\n{path}", parent=self.engineering_window)
 
     def _save_channel_settings_json_as(self) -> None:
@@ -1749,18 +1763,22 @@ class ElementCheckerApp(tk.Tk):
             filetypes=(("JSON files", "*.json"), ("All files", "*.*")),
         )
         if not filename:
+            self._append_user_action("JSON save as canceled")
             return
 
         path = Path(filename)
+        self._append_user_action(f"JSON save as selected: {path}")
         try:
             save_channel_settings(path, self.sensor_settings)
         except Exception as exc:
+            self._append_user_action(f"JSON save failed: {path}: {exc}")
             messagebox.showerror("JSON save error", str(exc), parent=self.engineering_window)
             return
 
         message = f"Channel settings saved to JSON: {path}"
         self.status_var.set(message)
         self._append_log(message)
+        self._append_user_action(message)
         messagebox.showinfo("JSON settings", f"Настройки сохранены:\n{path}", parent=self.engineering_window)
 
     def _load_channel_settings_excel(self) -> None:
@@ -1779,17 +1797,21 @@ class ElementCheckerApp(tk.Tk):
             filetypes=(("Excel files", "*.xlsx"), ("All files", "*.*")),
         )
         if not filename:
+            self._append_user_action("Excel settings load canceled")
             return
 
         path = Path(filename)
+        self._append_user_action(f"Excel settings load selected: {path}")
         warning = load_channel_settings_excel(path, self.sensor_settings)
         if warning:
+            self._append_user_action(f"Excel settings load failed: {path}: {warning}")
             messagebox.showerror("Excel load error", warning, parent=self.engineering_window)
             return
 
         try:
             save_channel_settings(self.channel_settings_path, self.sensor_settings)
         except Exception as exc:
+            self._append_user_action(f"Excel settings load failed while saving working JSON: {exc}")
             messagebox.showerror("JSON save error", str(exc), parent=self.engineering_window)
             return
 
@@ -1798,6 +1820,7 @@ class ElementCheckerApp(tk.Tk):
         message = f"Channel settings loaded from Excel and saved to JSON: {path}"
         self.status_var.set(message)
         self._append_log(message)
+        self._append_user_action(message)
         messagebox.showinfo("Excel settings", f"Настройки загружены из Excel и сохранены в JSON:\n{path}", parent=self.engineering_window)
 
     def _save_channel_settings_excel_as(self) -> None:
@@ -1810,18 +1833,22 @@ class ElementCheckerApp(tk.Tk):
             filetypes=(("Excel files", "*.xlsx"), ("All files", "*.*")),
         )
         if not filename:
+            self._append_user_action("Excel settings save as canceled")
             return
 
         path = Path(filename)
+        self._append_user_action(f"Excel settings save as selected: {path}")
         try:
             save_channel_settings_excel(path, self.sensor_settings)
         except Exception as exc:
+            self._append_user_action(f"Excel settings save failed: {path}: {exc}")
             messagebox.showerror("Excel save error", str(exc), parent=self.engineering_window)
             return
 
         message = f"Channel settings saved to Excel: {path}"
         self.status_var.set(message)
         self._append_log(message)
+        self._append_user_action(message)
         messagebox.showinfo("Excel settings", f"Настройки сохранены в Excel:\n{path}", parent=self.engineering_window)
 
     def _close_engineering_window(self) -> None:
@@ -2008,6 +2035,7 @@ class ElementCheckerApp(tk.Tk):
                 self.auto_poll_next_due.pop(key, None)
         self.status_var.set(f"Channel saved: Elemer {device_index + 1}, channel {channel}")
         self._append_log(f"Engineering settings saved for Elemer {device_index + 1}, channel {channel}")
+        self._append_user_action(f"Channel settings saved: Elemer {device_index + 1}, channel {channel}")
 
     def _open_logs_window(self) -> None:
         if self.logs_window is not None and self.logs_window.winfo_exists():
@@ -2042,6 +2070,40 @@ class ElementCheckerApp(tk.Tk):
         if self.logs_window is not None:
             self.logs_window.destroy()
             self.logs_window = None
+
+    def _open_user_actions_window(self) -> None:
+        if self.user_actions_window is not None and self.user_actions_window.winfo_exists():
+            self.user_actions_window.lift()
+            self.user_actions_window.focus_set()
+            return
+
+        window = tk.Toplevel(self)
+        window.title("User actions")
+        window.geometry("900x420")
+        window.protocol("WM_DELETE_WINDOW", self._close_user_actions_window)
+        window.columnconfigure(0, weight=1)
+        window.rowconfigure(0, weight=1)
+        self.user_actions_window = window
+
+        frame = ttk.Frame(window)
+        frame.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+
+        self.user_actions_text = tk.Text(frame, wrap="word")
+        self.user_actions_text.grid(row=0, column=0, sticky="nsew")
+        scroll = ttk.Scrollbar(frame, orient="vertical", command=self.user_actions_text.yview)
+        scroll.grid(row=0, column=1, sticky="ns")
+        self.user_actions_text.configure(yscrollcommand=scroll.set)
+        if self.user_action_lines:
+            self.user_actions_text.insert("end", "\n".join(self.user_action_lines) + "\n")
+            self.user_actions_text.see("end")
+
+    def _close_user_actions_window(self) -> None:
+        self.user_actions_text = None
+        if self.user_actions_window is not None:
+            self.user_actions_window.destroy()
+            self.user_actions_window = None
 
     def _available_ports(self) -> tuple[str, ...]:
         if list_ports is None:
@@ -2798,6 +2860,48 @@ class ElementCheckerApp(tk.Tk):
             self.logs_text.insert("end", line + "\n")
             self.logs_text.see("end")
 
+    def _append_user_action(self, message: str) -> None:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        line = f"[{timestamp}] {message}"
+        self.user_action_lines.append(line)
+        del self.user_action_lines[:-5000]
+        try:
+            self.user_action_log_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.user_action_log_path.open("a", encoding="utf-8") as log_file:
+                log_file.write(line + "\n")
+                log_file.flush()
+        except Exception as exc:
+            self._append_log(f"User action log write error: {exc}")
+        if self.user_actions_text is not None and self.user_actions_text.winfo_exists():
+            self.user_actions_text.insert("end", line + "\n")
+            self.user_actions_text.see("end")
+
+    def _log_button_click(self, event) -> None:
+        widget = event.widget
+        if widget is None:
+            return
+        widget_class = widget.winfo_class()
+        if widget_class not in {"Button", "TButton"}:
+            return
+        try:
+            text = str(widget.cget("text")).strip()
+        except Exception:
+            text = widget_class
+        if not text:
+            try:
+                variable_name = str(widget.cget("textvariable"))
+                text = str(widget.getvar(variable_name)).strip() if variable_name else ""
+            except Exception:
+                text = ""
+        if not text:
+            text = widget_class
+        try:
+            window_title = widget.winfo_toplevel().title()
+        except Exception:
+            window_title = ""
+        suffix = f" ({window_title})" if window_title else ""
+        self._append_user_action(f"Button clicked: {text}{suffix}")
+
     def _drain_ui_queue(self) -> None:
         while True:
             try:
@@ -2864,6 +2968,7 @@ class ElementCheckerApp(tk.Tk):
         self.after(20, self._drain_ui_queue)
 
     def _on_close(self) -> None:
+        self._append_user_action("Application closing")
         self._disconnect()
         self.db_writer.close()
         if self.settings_window is not None and self.settings_window.winfo_exists():
@@ -2872,6 +2977,8 @@ class ElementCheckerApp(tk.Tk):
             self.engineering_window.destroy()
         if self.logs_window is not None and self.logs_window.winfo_exists():
             self.logs_window.destroy()
+        if self.user_actions_window is not None and self.user_actions_window.winfo_exists():
+            self.user_actions_window.destroy()
         self.destroy()
 
 
