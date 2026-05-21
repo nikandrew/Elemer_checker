@@ -66,8 +66,6 @@ TELEMETRY_CHANNELS = 16
 TELEMETRY_REGISTERS_PER_CHANNEL = 2
 TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL = 4
 SENSOR_TYPE_BASE_ADDRESS = 0x0860
-INDICATOR_COLOR_BASE_ADDRESS = 0x0850
-INDICATOR_COLOR_AUTO = 1
 DEVICE_COUNT = 3
 SETTINGS_FILE = "element_checker_settings.xlsx"
 CHANNEL_SETTINGS_FILE = "channel_settings.json"
@@ -108,44 +106,6 @@ class ModbusResult:
     valid: bool
     message: str
     data: bytes = b""
-
-
-@dataclass(frozen=True)
-class ChannelDeviceParameter:
-    name: str
-    base_address: int
-    register_count: int
-
-
-CHANNEL_DEVICE_PARAMETERS = (
-    ChannelDeviceParameter("SEt1", 0x0700, 2),
-    ChannelDeviceParameter("HYS1", 0x0720, 2),
-    ChannelDeviceParameter("SEt2", 0x0740, 2),
-    ChannelDeviceParameter("HYS2", 0x0760, 2),
-    ChannelDeviceParameter("StYP", 0x0780, 1),
-    ChannelDeviceParameter("JtOC", 0x07F0, 1),
-    ChannelDeviceParameter("ScL", 0x0800, 2),
-    ChannelDeviceParameter("ScH", 0x0820, 2),
-    ChannelDeviceParameter("SctP", 0x0840, 1),
-    ChannelDeviceParameter("iCOL", 0x0850, 1),
-    ChannelDeviceParameter("SEnS", 0x0860, 1),
-    ChannelDeviceParameter("InPC", 0x0880, 1),
-    ChannelDeviceParameter("InC1", 0x0890, 1),
-    ChannelDeviceParameter("InC2", 0x08A0, 1),
-    ChannelDeviceParameter("SHFn", 0x08B0, 2),
-    ChannelDeviceParameter("GAin", 0x08D0, 2),
-    ChannelDeviceParameter("PrcS", 0x08F0, 1),
-    ChannelDeviceParameter("nSu", 0x0900, 1),
-    ChannelDeviceParameter("brdL", 0x0910, 2),
-    ChannelDeviceParameter("brdH", 0x0930, 2),
-    ChannelDeviceParameter("Sil", 0x0980, 1),
-    ChannelDeviceParameter("rES0", 0x0990, 2),
-    ChannelDeviceParameter("rESL", 0x09B0, 2),
-    ChannelDeviceParameter("Lc", 0x09D0, 1),
-    ChannelDeviceParameter("IdPL", 0x09E0, 2),
-    ChannelDeviceParameter("IdPH", 0x0A00, 2),
-    ChannelDeviceParameter("JCt", 0x0A20, 1),
-)
 
 
 @dataclass
@@ -286,35 +246,6 @@ def build_request(slave_addr: int, function_code: int, start_address: int, quant
     return payload + modbus_crc(payload)
 
 
-def build_write_multiple_registers_request(slave_addr: int, start_address: int, values: list[int]) -> bytes:
-    if not 0 <= slave_addr <= 247:
-        raise ValueError("Slave address must be 0..247")
-    if not 0 <= start_address <= 0xFFFF:
-        raise ValueError("Start address must be 0..65535")
-    if not values:
-        raise ValueError("Register values are empty")
-    if len(values) > 123:
-        raise ValueError("Function 16 can write no more than 123 registers")
-    for value in values:
-        if not 0 <= value <= 0xFFFF:
-            raise ValueError("Register value must be 0..65535")
-
-    quantity = len(values)
-    payload = bytes(
-        [
-            slave_addr,
-            0x10,
-            (start_address >> 8) & 0xFF,
-            start_address & 0xFF,
-            (quantity >> 8) & 0xFF,
-            quantity & 0xFF,
-            quantity * 2,
-        ]
-    )
-    payload += b"".join(value.to_bytes(2, byteorder="big", signed=False) for value in values)
-    return payload + modbus_crc(payload)
-
-
 def build_read_response_frame(slave_addr: int, function_code: int, data: bytes) -> bytes:
     payload = bytes([slave_addr, function_code, len(data)]) + data
     return payload + modbus_crc(payload)
@@ -372,37 +303,6 @@ def validate_write_single_response(response: bytes, request: bytes) -> ModbusRes
         return ModbusResult(False, f"Modbus exception {code:02X}: {description}")
     if response != request:
         return ModbusResult(False, f"write echo mismatch: {format_hex(response)}")
-    return ModbusResult(True, "valid")
-
-
-def validate_write_multiple_response(
-    response: bytes,
-    slave_addr: int,
-    start_address: int,
-    quantity: int,
-) -> ModbusResult:
-    if not response:
-        return ModbusResult(False, "timeout/no data")
-    if len(response) < 5:
-        return ModbusResult(False, f"too short: {len(response)} byte(s)")
-    if not check_crc(response):
-        return ModbusResult(False, "CRC mismatch")
-    if response[0] != slave_addr:
-        return ModbusResult(False, f"wrong slave addr: {response[0]}")
-    if response[1] == 0x90:
-        code = response[2]
-        description = EXCEPTION_CODES.get(code, "Unknown exception")
-        return ModbusResult(False, f"Modbus exception {code:02X}: {description}")
-    if response[1] != 0x10:
-        return ModbusResult(False, f"wrong function: {response[1]:02X}")
-    if len(response) != 8:
-        return ModbusResult(False, f"wrong frame length: {len(response)}, expected 8")
-    echoed_address = int.from_bytes(response[2:4], byteorder="big", signed=False)
-    echoed_quantity = int.from_bytes(response[4:6], byteorder="big", signed=False)
-    if echoed_address != start_address:
-        return ModbusResult(False, f"wrong start address: {echoed_address:04X}")
-    if echoed_quantity != quantity:
-        return ModbusResult(False, f"wrong register count: {echoed_quantity}, expected {quantity}")
     return ModbusResult(True, "valid")
 
 
@@ -1150,8 +1050,9 @@ class ElementCheckerApp(tk.Tk):
         self.engineering_detail_frame: ttk.LabelFrame | None = None
         self.engineering_vars: dict[str, tk.Variable] = {}
         self.engineering_selected: tuple[int, int] | None = None
-        self.device_channel_param_buffer: dict | None = None
         self.measurement_started_at: datetime | None = None
+        self.measurement_export_from: datetime | None = None
+        self.next_hourly_export_at: datetime | None = None
         self.pending_stop_export = False
         self.sensor_settings, self.sensor_settings_warning = load_sensor_settings(Path(__file__).with_name(SETTINGS_FILE))
         self.channel_settings_path = Path(__file__).with_name(CHANNEL_SETTINGS_FILE)
@@ -1781,23 +1682,12 @@ class ElementCheckerApp(tk.Tk):
         ttk.Button(button_frame, text="Сохранить канал", command=self._save_engineering_channel).grid(
             row=0, column=0, columnspan=2, sticky="ew"
         )
-        ttk.Button(
-            button_frame,
-            text="Считать параметры из канала",
-            command=self._read_selected_device_channel_parameters,
-        ).grid(row=1, column=0, padx=(0, 4), pady=(8, 0), sticky="ew")
-        ttk.Button(
-            button_frame,
-            text="Записать параметры в канал",
-            command=self._write_selected_device_channel_parameters,
-        ).grid(row=1, column=1, padx=(4, 0), pady=(8, 0), sticky="ew")
 
     def _save_engineering_channel(self) -> None:
         if self.engineering_selected is None:
             return
         device_index, channel = self.engineering_selected
         sensor = self.sensor_settings[device_index][channel - 1]
-        was_used = sensor.used
 
         try:
             def parse_limit(var_name: str) -> float | None:
@@ -1854,181 +1744,6 @@ class ElementCheckerApp(tk.Tk):
                 self.auto_poll_next_due.pop(key, None)
         self.status_var.set(f"Channel saved: Elemer {device_index + 1}, channel {channel}")
         self._append_log(f"Engineering settings saved for Elemer {device_index + 1}, channel {channel}")
-        if not was_used and sensor.used:
-            self._activate_device_sensor_channel(device_index, channel)
-
-    def _activate_device_sensor_channel(self, device_index: int, channel: int) -> None:
-        if not self.serial_port or not self.serial_port.is_open:
-            message = f"Elemer {device_index + 1}, channel {channel}: device activation skipped, COM port is not connected"
-            self.status_var.set(message)
-            self._append_log(message)
-            return
-        if self.auto_poll_var.get():
-            message = f"Elemer {device_index + 1}, channel {channel}: device activation skipped, stop measurement first"
-            self.status_var.set(message)
-            self._append_log(message)
-            return
-
-        try:
-            settings = self._settings(device_index)
-            address = INDICATOR_COLOR_BASE_ADDRESS + channel - 1
-            request = build_request(settings.slave_addr, 0x06, address, INDICATOR_COLOR_AUTO)
-        except Exception as exc:
-            messagebox.showerror("Device activation error", str(exc))
-            return
-
-        def handle_response(response: bytes, dev=device_index, ch=channel, write_request=request) -> None:
-            result = validate_write_single_response(response, write_request)
-            if result.valid:
-                message = f"Elemer {dev + 1}, channel {ch}: device channel activated"
-            else:
-                message = f"Elemer {dev + 1}, channel {ch}: device activation failed - {result.message}"
-            self.status_var.set(message)
-            self._append_log(message)
-
-        self._send_request(request, 8, handle_response)
-
-    def _device_channel_parameter_address(self, parameter: ChannelDeviceParameter, channel: int) -> int:
-        if parameter.register_count == 2:
-            return parameter.base_address + (channel - 1) * 2
-        return parameter.base_address + channel - 1
-
-    def _read_selected_device_channel_parameters(self) -> None:
-        if self.engineering_selected is None:
-            messagebox.showwarning("Channel parameters", "Select a channel first.", parent=self.engineering_window)
-            return
-        if not self._ensure_connected():
-            return
-        if self.auto_poll_var.get() or self.temperature_poll_running:
-            messagebox.showwarning(
-                "Channel parameters",
-                "Stop measurement before reading device channel parameters.",
-                parent=self.engineering_window,
-            )
-            return
-
-        device_index, channel = self.engineering_selected
-        try:
-            settings = self._settings(device_index)
-        except Exception as exc:
-            messagebox.showerror("Channel parameters", str(exc), parent=self.engineering_window)
-            return
-
-        self.status_var.set(f"Reading device parameters: Elemer {device_index + 1}, channel {channel}")
-
-        def worker() -> None:
-            try:
-                parameter_values: dict[str, list[int]] = {}
-                for parameter in CHANNEL_DEVICE_PARAMETERS:
-                    address = self._device_channel_parameter_address(parameter, channel)
-                    request = build_request(settings.slave_addr, 0x03, address, parameter.register_count)
-                    response = self._transact(
-                        request,
-                        expected_response_size(0x03, parameter.register_count),
-                        log_transaction=False,
-                    )
-                    result = validate_read_response(response, settings.slave_addr, 0x03, parameter.register_count * 2)
-                    if not result.valid:
-                        raise RuntimeError(f"{parameter.name} {address:04X}: {result.message}")
-                    parameter_values[parameter.name] = [
-                        int.from_bytes(result.data[offset : offset + 2], byteorder="big", signed=False)
-                        for offset in range(0, len(result.data), 2)
-                    ]
-                self.device_channel_param_buffer = {
-                    "device_index": device_index,
-                    "channel": channel,
-                    "values": parameter_values,
-                }
-                message = (
-                    f"Device parameters read from Elemer {device_index + 1}, channel {channel}: "
-                    f"{len(parameter_values)} parameter(s)"
-                )
-                self.ui_queue.put(("status", message))
-                self.ui_queue.put(("log", message))
-            except Exception as exc:
-                message = f"Device parameter read failed: Elemer {device_index + 1}, channel {channel}: {exc}"
-                self.ui_queue.put(("status", "Device parameter read failed"))
-                self.ui_queue.put(("log", message))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _write_selected_device_channel_parameters(self) -> None:
-        if self.engineering_selected is None:
-            messagebox.showwarning("Channel parameters", "Select a target channel first.", parent=self.engineering_window)
-            return
-        if self.device_channel_param_buffer is None:
-            messagebox.showwarning(
-                "Channel parameters",
-                "Read parameters from a source channel first.",
-                parent=self.engineering_window,
-            )
-            return
-        if not self._ensure_connected():
-            return
-        if self.auto_poll_var.get() or self.temperature_poll_running:
-            messagebox.showwarning(
-                "Channel parameters",
-                "Stop measurement before writing device channel parameters.",
-                parent=self.engineering_window,
-            )
-            return
-
-        device_index, channel = self.engineering_selected
-        source_device = int(self.device_channel_param_buffer["device_index"])
-        source_channel = int(self.device_channel_param_buffer["channel"])
-        if not messagebox.askyesno(
-            "Write channel parameters",
-            f"Write device parameters from Elemer {source_device + 1}, channel {source_channel} "
-            f"to Elemer {device_index + 1}, channel {channel}?",
-            parent=self.engineering_window,
-        ):
-            return
-
-        try:
-            settings = self._settings(device_index)
-        except Exception as exc:
-            messagebox.showerror("Channel parameters", str(exc), parent=self.engineering_window)
-            return
-
-        self.status_var.set(f"Writing device parameters: Elemer {device_index + 1}, channel {channel}")
-
-        def worker() -> None:
-            try:
-                values_by_name: dict[str, list[int]] = self.device_channel_param_buffer["values"]
-                for parameter in CHANNEL_DEVICE_PARAMETERS:
-                    values = values_by_name.get(parameter.name)
-                    if not values:
-                        continue
-                    address = self._device_channel_parameter_address(parameter, channel)
-                    if parameter.register_count == 1:
-                        request = build_request(settings.slave_addr, 0x06, address, values[0])
-                        response = self._transact(request, 8, log_transaction=False)
-                        result = validate_write_single_response(response, request)
-                    else:
-                        request = build_write_multiple_registers_request(settings.slave_addr, address, values)
-                        response = self._transact(request, 8, log_transaction=False)
-                        result = validate_write_multiple_response(
-                            response,
-                            settings.slave_addr,
-                            address,
-                            len(values),
-                        )
-                    if not result.valid:
-                        raise RuntimeError(f"{parameter.name} {address:04X}: {result.message}")
-
-                self.sensor_type_cache[device_index][channel - 1] = None
-                message = (
-                    f"Device parameters written to Elemer {device_index + 1}, channel {channel} "
-                    f"from Elemer {source_device + 1}, channel {source_channel}"
-                )
-                self.ui_queue.put(("status", message))
-                self.ui_queue.put(("log", message))
-            except Exception as exc:
-                message = f"Device parameter write failed: Elemer {device_index + 1}, channel {channel}: {exc}"
-                self.ui_queue.put(("status", "Device parameter write failed"))
-                self.ui_queue.put(("log", message))
-
-        threading.Thread(target=worker, daemon=True).start()
 
     def _open_logs_window(self) -> None:
         if self.logs_window is not None and self.logs_window.winfo_exists():
@@ -2587,20 +2302,30 @@ class ElementCheckerApp(tk.Tk):
             return
         self._export_measurements_async(start, end, label)
 
-    def _export_measurements_async(self, start: datetime, end: datetime, label: str) -> None:
+    def _export_measurements_async(
+        self,
+        start: datetime,
+        end: datetime,
+        label: str,
+        show_message: bool = True,
+    ) -> None:
         if not self.db_writer.enabled:
-            messagebox.showerror("Export error", self.db_writer.disabled_reason or "Database driver is not installed")
+            if show_message:
+                messagebox.showerror("Export error", self.db_writer.disabled_reason or "Database driver is not installed")
+            else:
+                self._append_log(self.db_writer.disabled_reason or "Database driver is not installed")
             return
-        self.export_status_var.set("Exporting data to Excel...")
+        if show_message:
+            self.export_status_var.set("Exporting data to Excel...")
 
         def worker() -> None:
             try:
                 self.db_writer.wait_until_idle()
                 path, row_count = self._export_measurements_to_excel(start, end, label)
-                self.ui_queue.put(("export_done", f"ok|{path}|{row_count}"))
+                self.ui_queue.put(("export_done", f"ok|{int(show_message)}|{path}|{row_count}"))
             except Exception as exc:
                 details = traceback.format_exc()
-                self.ui_queue.put(("export_done", f"error|{exc}|{details}"))
+                self.ui_queue.put(("export_done", f"error|{int(show_message)}|{exc}|{details}"))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2720,7 +2445,10 @@ class ElementCheckerApp(tk.Tk):
             return
 
         self.auto_poll_var.set(True)
-        self.measurement_started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(timezone.utc)
+        self.measurement_started_at = started_at
+        self.measurement_export_from = started_at
+        self.next_hourly_export_at = started_at + timedelta(hours=1)
         self.pending_stop_export = False
         now = time.monotonic()
         self.auto_poll_next_due = {
@@ -2736,7 +2464,6 @@ class ElementCheckerApp(tk.Tk):
 
     def _stop_auto_poll(self, export_session: bool = True) -> None:
         was_running = self.auto_poll_var.get()
-        session_start = self.measurement_started_at
         self.auto_poll_var.set(False)
         self._cancel_auto_poll()
         self.auto_poll_next_due = {}
@@ -2745,13 +2472,37 @@ class ElementCheckerApp(tk.Tk):
         if hasattr(self, "auto_stop_button"):
             self.auto_stop_button.state(["disabled"])
         self.auto_poll_status_var.set("Auto poll stopped")
-        if export_session and was_running and session_start is not None:
+        if export_session and was_running and self.measurement_export_from is not None:
             if self.temperature_poll_running:
                 self.pending_stop_export = True
                 self.export_status_var.set("Waiting for the current poll to finish before export...")
             else:
-                self._export_measurements_async(session_start, datetime.now(timezone.utc), "session")
-                self.measurement_started_at = None
+                self._export_session_until(datetime.now(timezone.utc), include_partial=True)
+                self._clear_measurement_export_state()
+        elif not export_session:
+            self.pending_stop_export = False
+            self._clear_measurement_export_state()
+
+    def _export_session_until(self, end: datetime, include_partial: bool) -> None:
+        while (
+            self.measurement_export_from is not None
+            and self.next_hourly_export_at is not None
+            and end >= self.next_hourly_export_at
+        ):
+            start = self.measurement_export_from
+            hour_end = self.next_hourly_export_at
+            label = f"session_hour_{start.astimezone().strftime('%Y%m%d_%H%M')}"
+            self._export_measurements_async(start, hour_end, label, show_message=False)
+            self.measurement_export_from = hour_end
+            self.next_hourly_export_at = hour_end + timedelta(hours=1)
+
+        if include_partial and self.measurement_export_from is not None and end > self.measurement_export_from:
+            self._export_measurements_async(self.measurement_export_from, end, "session_rest", show_message=True)
+
+    def _clear_measurement_export_state(self) -> None:
+        self.measurement_started_at = None
+        self.measurement_export_from = None
+        self.next_hourly_export_at = None
 
     def _schedule_auto_poll(self, delay_ms: int | None = None) -> None:
         self._cancel_auto_poll()
@@ -2809,6 +2560,7 @@ class ElementCheckerApp(tk.Tk):
             elif kind == "poll_done":
                 self.temperature_poll_running = False
                 if value == "auto" and self.auto_poll_var.get():
+                    self._export_session_until(datetime.now(timezone.utc), include_partial=False)
                     self.auto_poll_status_var.set("Auto poll running")
                     self._schedule_auto_poll()
                 elif value == "auto":
@@ -2816,28 +2568,33 @@ class ElementCheckerApp(tk.Tk):
                     if self.pending_stop_export:
                         self.pending_stop_export = False
                         end = datetime.now(timezone.utc)
-                        self._export_measurements_async(self.measurement_started_at or end, end, "session")
-                        self.measurement_started_at = None
+                        self._export_session_until(end, include_partial=True)
+                        self._clear_measurement_export_state()
             elif kind == "callback":
                 callback_id_text, response_hex = value.split("|", 1)
                 callback = self._pending_callbacks.pop(int(callback_id_text), None)
                 if callback is not None:
                     callback(bytes.fromhex(response_hex))
             elif kind == "export_done":
-                parts = value.split("|", 2)
+                parts = value.split("|", 3)
                 if parts[0] == "ok":
-                    path = parts[1]
-                    row_count = parts[2]
+                    show_message = parts[1] == "1"
+                    path = parts[2]
+                    row_count = parts[3]
                     self.export_status_var.set(f"Saved {row_count} row(s): {path}")
-                    messagebox.showinfo("Excel export", f"Data saved to file:\n{path}")
+                    self._append_log(f"Excel export saved {row_count} row(s): {path}")
+                    if show_message:
+                        messagebox.showinfo("Excel export", f"Data saved to file:\n{path}")
                 else:
-                    error = parts[1] if len(parts) > 1 else "unknown error"
-                    details = parts[2] if len(parts) > 2 else ""
+                    show_message = len(parts) > 1 and parts[1] == "1"
+                    error = parts[2] if len(parts) > 2 else "unknown error"
+                    details = parts[3] if len(parts) > 3 else ""
                     if details:
                         self._append_log("Excel export traceback:\n" + details)
                     self.export_status_var.set(f"Export failed: {error}")
-                    shown_details = details[-1200:] if details else ""
-                    messagebox.showerror("Excel export error", f"{error}\n\n{shown_details}".strip())
+                    if show_message:
+                        shown_details = details[-1200:] if details else ""
+                        messagebox.showerror("Excel export error", f"{error}\n\n{shown_details}".strip())
             else:
                 self._append_log(value)
         self.after(20, self._drain_ui_queue)
