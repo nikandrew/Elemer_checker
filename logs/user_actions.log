@@ -7,3 +7,12 @@ Test (Инженерное меню)
 [2026-05-26 22:30:05] Button clicked: Сохранить Excel как... (Инженерное меню)
 [2026-05-26 22:43:20] Application started
 [2026-05-26 22:43:42] Button clicked: Инженерное меню (Element TM5104 Modbus Checker)
+[2026-05-26 22:54:51] Button clicked: Инженерное меню (Element TM5104 Modbus Checker)
+[2026-05-26 22:55:01] Excel settings load selected: D:\Project\CODE\Elemer_checker\channel_settings_true.xlsx
+[2026-05-26 22:55:02] Channel settings loaded from Excel and saved to JSON: D:\Project\CODE\Elemer_checker\channel_settings_true.xlsx
+[2026-05-26 22:55:04] Button clicked: Загрузить Excel (Инженерное меню)
+[2026-05-26 22:55:05] Button clicked: 1
+АБ Т6Т (Инженерное меню)
+[2026-05-26 22:55:26] Button clicked: 3
+ДТП 3 (Инженерное меню)
+[2026-05-26 22:57:43] Application closing
