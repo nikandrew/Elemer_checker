@@ -6,3 +6,6 @@ measurements/
 build/
 dist/
 postgres-data/
+logs/
+user_actions.log
+/logs/user_actions.log
