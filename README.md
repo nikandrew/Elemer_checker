@@ -46,7 +46,7 @@ Default database settings:
 
 - database: `elemer_tvi`
 - host: `localhost`
-- port: `5432`
+- port: `55432`
 - user: `postgres`
 - password: `pass`
 
@@ -55,12 +55,35 @@ Override them with environment variables:
 ```powershell
 $env:ELEMER_DB_NAME="elemer_tvi"
 $env:ELEMER_DB_HOST="localhost"
-$env:ELEMER_DB_PORT="5432"
+$env:ELEMER_DB_PORT="55432"
 $env:ELEMER_DB_USER="postgres"
 $env:ELEMER_DB_PASSWORD="pass"
 ```
 
 The app also reads the same settings from local `.env` in the application folder. Keep real passwords in `.env`; use `.env.example` as a template.
+
+## PostgreSQL and Grafana in Docker
+
+`docker-compose.yml` starts PostgreSQL and Grafana:
+
+- PostgreSQL is available from the host at `localhost:55432`.
+- Grafana is available at `http://localhost:3001`.
+- PostgreSQL data is stored in `postgres-data/` outside the container.
+- Grafana dashboard provisioning is stored in `grafana/` and is loaded automatically with the container.
+
+Start services:
+
+```powershell
+cd C:\Nikitin\Soft\Elemer_checker
+docker compose up -d
+```
+
+Open Grafana with the credentials from `.env` or `.env.example`:
+
+- user: `admin`
+- password: `admin`
+
+The provisioned dashboard is in the `Elemer` folder and uses the `sensor_measurements` table created by the application.
 
 ## Run
 

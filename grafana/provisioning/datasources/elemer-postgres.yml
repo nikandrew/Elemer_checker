@@ -1,0 +1,19 @@
+apiVersion: 1
+
+datasources:
+  - name: Elemer PostgreSQL
+    uid: elemer-postgres
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: ${ELEMER_DB_NAME}
+    user: ${ELEMER_DB_USER}
+    isDefault: true
+    editable: true
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+    secureJsonData:
+      password: ${ELEMER_DB_PASSWORD}
+

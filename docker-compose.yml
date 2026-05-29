@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: elemer-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${ELEMER_DB_NAME:-elemer_tvi}
+      POSTGRES_USER: ${ELEMER_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${ELEMER_DB_PASSWORD:-pass}
+      TZ: Europe/Moscow
+    ports:
+      - "55432:5432"
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana-oss:11.6.0
+    container_name: elemer-grafana
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_DEFAULT_THEME: light
+      ELEMER_DB_NAME: ${ELEMER_DB_NAME:-elemer_tvi}
+      ELEMER_DB_USER: ${ELEMER_DB_USER:-postgres}
+      ELEMER_DB_PASSWORD: ${ELEMER_DB_PASSWORD:-pass}
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
