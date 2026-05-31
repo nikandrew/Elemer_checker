@@ -20,3 +20,91 @@ Test (Инженерное меню)
 ДТП 3 (Инженерное меню)
 [2026-05-26 22:57:43] Application closing
 >>>>>>> ab8a7be0925aa1ecfdab0ec8e07616130fd8950a
+[2026-05-31 13:09:29] Application started
+[2026-05-31 13:09:34] Button clicked: Включить эмулятор (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:09:36] Button clicked: Эмулятор включен (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:09:44] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:10:50] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:11:03] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:11:30] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:12:29] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:15:44] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:15:45] Application closing
+[2026-05-31 13:15:56] Application started
+[2026-05-31 13:16:00] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:16:01] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:20:33] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:20:41] Application closing
+[2026-05-31 13:20:52] Application started
+[2026-05-31 13:22:17] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:23:35] Button clicked: Инженерное меню (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:23:37] Button clicked: 4
+ДТП 4 (Инженерное меню)
+[2026-05-31 13:23:49] Excel settings load selected: D:\Project\CODE\Elemer_checker\channel_settings_true.xlsx
+[2026-05-31 13:23:49] Channel settings loaded from Excel and saved to JSON: D:\Project\CODE\Elemer_checker\channel_settings_true.xlsx
+[2026-05-31 13:23:51] Button clicked: Загрузить Excel (Инженерное меню)
+[2026-05-31 13:24:02] Application closing
+[2026-05-31 13:24:10] Application started
+[2026-05-31 13:24:12] Button clicked: Инженерное меню (Element TM5104 Modbus Checker)
+[2026-05-31 13:24:16] Button clicked: 12
+ДТП 12 (Инженерное меню)
+[2026-05-31 13:24:27] Excel settings save as selected: D:\Project\CODE\Elemer_checker\channel_settings_true.xlsx
+[2026-05-31 13:24:27] Channel settings saved to Excel: D:\Project\CODE\Elemer_checker\channel_settings_true.xlsx
+[2026-05-31 13:24:28] Button clicked: Сохранить Excel как... (Инженерное меню)
+[2026-05-31 13:24:30] Application closing
+[2026-05-31 13:24:33] Application started
+[2026-05-31 13:24:36] Button clicked: Инженерное меню (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:24:39] Button clicked: Загрузить Excel (Инженерное меню)
+[2026-05-31 13:24:41] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:24:44] Button clicked: Инженерное меню (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 13:24:48] Excel settings load selected: D:\Project\CODE\Elemer_checker\channel_settings_true.xlsx
+[2026-05-31 13:24:48] Channel settings loaded from Excel and saved to JSON: D:\Project\CODE\Elemer_checker\channel_settings_true.xlsx
+[2026-05-31 13:24:50] Button clicked: Загрузить Excel (Инженерное меню)
+[2026-05-31 13:24:51] Button clicked: 16
+резерв ТР2Т (Инженерное меню)
+[2026-05-31 13:24:57] Channel settings saved: Elemer 2, channel 16
+[2026-05-31 13:24:57] Button clicked: Сохранить канал (Инженерное меню)
+[2026-05-31 13:51:28] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 14:09:19] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 14:09:21] Application closing
+[2026-05-31 14:09:33] Application started
+[2026-05-31 15:54:50] Application closing
+[2026-05-31 15:55:00] Application started
+[2026-05-31 16:13:04] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 16:13:06] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 16:14:28] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 16:16:11] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 16:16:27] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 16:16:28] Application closing
+[2026-05-31 16:30:56] Application started
+[2026-05-31 16:32:27] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 16:32:52] Button clicked: Инженерное меню (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 16:32:57] Excel settings load selected: D:\Project\CODE\Elemer_checker\channel_settings_true.xlsx
+[2026-05-31 16:32:57] Channel settings loaded from Excel and saved to JSON: D:\Project\CODE\Elemer_checker\channel_settings_true.xlsx
+[2026-05-31 16:32:58] Button clicked: Загрузить Excel (Инженерное меню)
+[2026-05-31 16:33:06] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 16:40:49] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 16:47:24] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 20:57:06] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 20:57:07] Application closing
+[2026-05-31 20:58:47] Application started
+[2026-05-31 21:09:25] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 21:09:28] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 21:09:31] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 21:09:46] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 21:19:23] Button clicked: Инженерное меню (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-05-31 21:19:25] Button clicked: 1
+АБ Т6Т (Инженерное меню)
+[2026-05-31 21:21:55] Button clicked: 11
+Т4Т (Инженерное меню)
+[2026-05-31 21:21:58] Button clicked: 4
+ДТП 4 (Инженерное меню)
+[2026-05-31 21:22:00] Button clicked: 11
+Т4Т (Инженерное меню)
+[2026-05-31 21:22:02] Button clicked: 4
+АФС-S Т16Т (Инженерное меню)
+[2026-05-31 21:53:14] Application closing
+[2026-05-31 22:00:50] Application started
+[2026-05-31 22:06:58] Application closing
+[2026-05-31 22:07:09] Application started
+[2026-05-31 22:56:29] Button clicked: Инженерное меню (Element TM5104 Modbus Checker - ЭМУЛЯТОР)

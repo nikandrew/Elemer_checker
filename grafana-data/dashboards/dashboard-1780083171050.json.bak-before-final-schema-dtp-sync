@@ -1,0 +1,2443 @@
+{
+  "kind": "Dashboard",
+  "apiVersion": "dashboard.grafana.app/v2",
+  "metadata": {
+    "name": "ad2g4bz",
+    "namespace": "default",
+    "uid": "da92bfa8-dc50-4c0a-a8f7-028ef5790aa9",
+    "generation": 7,
+    "creationTimestamp": "2026-05-31T19:06:55Z",
+    "labels": {
+      "grafana.app/deprecatedInternalID": "3017498732408832"
+    },
+    "annotations": {
+      "grafana.app/createdBy": "access-policy:service",
+      "grafana.app/folder": "dfnpukwyy1p8gf",
+      "grafana.app/managedBy": "classic-file-provisioning",
+      "grafana.app/managerAllowsEdits": "true",
+      "grafana.app/managerId": "Elemer",
+      "grafana.app/saved-from-ui": "Grafana v13.0.1 (a100054f)",
+      "grafana.app/sourceChecksum": "58024dac9e7afe04b38b195b4e085e9b",
+      "grafana.app/sourcePath": "/var/lib/grafana/dashboards/dashboard-1780083171050.json",
+      "grafana.app/sourceTimestamp": "1780255401000",
+      "grafana.app/updatedBy": "user:dfnpuki5l87b4c",
+      "grafana.app/updatedTimestamp": "2026-05-31T19:29:11Z"
+    }
+  },
+  "spec": {
+    "annotations": [
+      {
+        "kind": "AnnotationQuery",
+        "spec": {
+          "query": {
+            "kind": "DataQuery",
+            "group": "grafana",
+            "version": "v0",
+            "datasource": {
+              "name": "-- Grafana --"
+            },
+            "spec": {}
+          },
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "builtIn": true
+        }
+      }
+    ],
+    "cursorSync": "Off",
+    "editable": true,
+    "elements": {
+      "panel-1": {
+        "kind": "Panel",
+        "spec": {
+          "id": 1,
+          "title": "New panel",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_33_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_33_color\",\r\n    COALESCE(sensor_name, 'Датчик 33') AS \"sensor_33_Name\",\r\n    sensor_num AS \"sensor_33_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 33\r\nORDER BY \"time\" DESC\r\nLIMIT 1;",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_34_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_34_color\",\r\n    COALESCE(sensor_name, 'Датчик 34') AS \"sensor_34_Name\",\r\n    sensor_num AS \"sensor_34_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 34\r\nORDER BY \"time\" DESC\r\nLIMIT 1;",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "B",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_35_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_35_color\",\r\n    COALESCE(sensor_name, 'Датчик 35') AS \"sensor_35_Name\",\r\n    sensor_num AS \"sensor_35_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 35\r\nORDER BY \"time\" DESC\r\nLIMIT 1;",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "C",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_36_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_36_color\",\r\n    COALESCE(sensor_name, 'Датчик 36') AS \"sensor_36_Name\",\r\n    sensor_num AS \"sensor_36_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 36\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "D",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_37_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_37_color\",\r\n    COALESCE(sensor_name, 'Датчик 37') AS \"sensor_37_Name\",\r\n    sensor_num AS \"sensor_37_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 37\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "E",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_38_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_38_color\",\r\n    COALESCE(sensor_name, 'Датчик 38') AS \"sensor_38_Name\",\r\n    sensor_num AS \"sensor_38_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 38\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "F",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_39_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_39_color\",\r\n    COALESCE(sensor_name, 'Датчик 39') AS \"sensor_39_Name\",\r\n    sensor_num AS \"sensor_39_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 39\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "G",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_40_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_40_color\",\r\n    COALESCE(sensor_name, 'Датчик 40') AS \"sensor_40_Name\",\r\n    sensor_num AS \"sensor_40_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 40\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "H",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_41_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_41_color\",\r\n    COALESCE(sensor_name, 'Датчик 41') AS \"sensor_41_Name\",\r\n    sensor_num AS \"sensor_41_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 41\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "I",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_42_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_42_color\",\r\n    COALESCE(sensor_name, 'Датчик 42') AS \"sensor_42_Name\",\r\n    sensor_num AS \"sensor_42_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 42\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "J",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_43_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_43_color\",\r\n    COALESCE(sensor_name, 'Датчик 43') AS \"sensor_43_Name\",\r\n    sensor_num AS \"sensor_43_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 43\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "K",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_44_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_44_color\",\r\n    COALESCE(sensor_name, 'Датчик 44') AS \"sensor_44_Name\",\r\n    sensor_num AS \"sensor_44_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 44\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "L",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_45_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_45_color\",\r\n    COALESCE(sensor_name, 'Датчик 45') AS \"sensor_45_Name\",\r\n    sensor_num AS \"sensor_45_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 45\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "M",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_46_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_46_color\",\r\n    COALESCE(sensor_name, 'Датчик 46') AS \"sensor_46_Name\",\r\n    sensor_num AS \"sensor_46_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 46\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "N",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_47_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_47_color\",\r\n    COALESCE(sensor_name, 'Датчик 47') AS \"sensor_47_Name\",\r\n    sensor_num AS \"sensor_47_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 47\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "O",
+                    "hidden": false
+                  }
+                },
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_48_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_48_color\",\r\n    COALESCE(sensor_name, 'Датчик 48') AS \"sensor_48_Name\",\r\n    sensor_num AS \"sensor_48_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 48\r\nORDER BY \"time\" DESC\r\nLIMIT 1;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "P",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "canvas",
+            "version": "13.0.1",
+            "spec": {
+              "options": {
+                "inlineEditing": true,
+                "panZoom": false,
+                "root": {
+                  "background": {
+                    "color": {
+                      "fixed": "transparent"
+                    },
+                    "image": {
+                      "fixed": "http://localhost:3001/public/img/elemer/Elemer_board_dtp_large.png",
+                      "mode": "fixed"
+                    },
+                    "size": "original"
+                  },
+                  "border": {
+                    "color": {
+                      "fixed": "dark-green"
+                    },
+                    "width": 0
+                  },
+                  "constraint": {
+                    "horizontal": "left",
+                    "vertical": "top"
+                  },
+                  "elements": [
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_33_color",
+                          "fixed": "#D9D9D9"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_33_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 1",
+                      "placement": {
+                        "height": 42.984375,
+                        "left": 9,
+                        "rotation": 0,
+                        "top": 43,
+                        "width": 180.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_33_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 2",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 58,
+                        "rotation": 0,
+                        "top": 7,
+                        "width": 131.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_33_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "connections": [],
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 3",
+                      "placement": {
+                        "height": 35.95703125,
+                        "left": 9,
+                        "rotation": 0,
+                        "top": 7,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_34_color",
+                          "fixed": "#D9D9D9"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_34_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 4",
+                      "placement": {
+                        "height": 42.984375,
+                        "left": 157,
+                        "rotation": 0,
+                        "top": 324,
+                        "width": 180.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_34_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 5",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 157,
+                        "rotation": 0,
+                        "top": 288,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_35_color",
+                          "fixed": "#D9D9D9"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_35_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 7",
+                      "placement": {
+                        "height": 42.984375,
+                        "left": 364,
+                        "rotation": 0,
+                        "top": 43,
+                        "width": 180.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_35_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 8",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 364,
+                        "rotation": 0,
+                        "top": 7,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_35_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 9",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 413,
+                        "rotation": 0,
+                        "top": 7,
+                        "width": 131.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_36_color",
+                          "fixed": "#D9D9D9"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_36_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 10",
+                      "placement": {
+                        "height": 42.984375,
+                        "left": 648,
+                        "top": 324,
+                        "width": 180.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_36_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 11",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 648,
+                        "top": 288,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_36_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 12",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 697,
+                        "top": 288,
+                        "width": 131.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_37_color",
+                          "fixed": "#D9D9D9"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_37_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "connections": [],
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 13",
+                      "placement": {
+                        "height": 42.984375,
+                        "left": 851,
+                        "top": 43,
+                        "width": 180.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_37_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 14",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 851,
+                        "top": 7,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_37_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "connections": [],
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 15",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 900,
+                        "top": 7,
+                        "width": 131.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_38_color",
+                          "fixed": "#D9D9D9"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_38_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 16",
+                      "placement": {
+                        "height": 42.96875,
+                        "left": 1131,
+                        "top": 324,
+                        "width": 180.96875
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_38_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "connections": [],
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 17",
+                      "placement": {
+                        "height": 35.953125,
+                        "left": 1131,
+                        "top": 288,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_38_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "connections": [],
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 18",
+                      "placement": {
+                        "height": 35.953125,
+                        "left": 1180,
+                        "top": 288,
+                        "width": 131.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_39_color",
+                          "fixed": "#D9D9D9"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_39_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 19",
+                      "placement": {
+                        "height": 42.984375,
+                        "left": 9,
+                        "top": 417,
+                        "width": 180.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_39_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 20",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 9,
+                        "top": 381,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_39_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 21",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 58,
+                        "top": 381,
+                        "width": 131.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_40_color",
+                          "fixed": "#D9D9D9"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_40_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 22",
+                      "placement": {
+                        "height": 42.984375,
+                        "left": 157,
+                        "top": 702,
+                        "width": 180.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_40_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 23",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 157,
+                        "top": 666,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_40_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 24",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 206,
+                        "top": 666,
+                        "width": 131.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_41_color",
+                          "fixed": "#D9D9D9"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_41_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 25",
+                      "placement": {
+                        "height": 42.984375,
+                        "left": 364,
+                        "top": 420,
+                        "width": 180.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_41_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 26",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 364,
+                        "top": 384,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_41_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 27",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 413,
+                        "top": 384,
+                        "width": 131.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_42_color",
+                          "fixed": "#D9D9D9"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_42_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 28",
+                      "placement": {
+                        "height": 42.984375,
+                        "left": 648,
+                        "top": 702,
+                        "width": 180.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_42_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 29",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 648,
+                        "top": 666,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_42_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 30",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 697,
+                        "top": 666,
+                        "width": 131.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_43_color",
+                          "fixed": "#D9D9D9"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_43_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 31",
+                      "placement": {
+                        "height": 42.984375,
+                        "left": 851,
+                        "top": 420,
+                        "width": 180.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_43_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 32",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 851,
+                        "top": 384,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_43_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 33",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 900,
+                        "top": 384,
+                        "width": 131.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_44_color",
+                          "fixed": "#D9D9D9"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_44_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 34",
+                      "placement": {
+                        "height": 42.96875,
+                        "left": 1131,
+                        "top": 699,
+                        "width": 180.96875
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_44_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "connections": [],
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 35",
+                      "placement": {
+                        "height": 35.953125,
+                        "left": 1131,
+                        "top": 663,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_44_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 36",
+                      "placement": {
+                        "height": 35.953125,
+                        "left": 1180,
+                        "top": 663,
+                        "width": 131.984375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_34_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 37",
+                      "placement": {
+                        "height": 35.96875,
+                        "left": 206,
+                        "rotation": 0,
+                        "top": 288,
+                        "width": 131.984375
+                      },
+                      "type": "metric-value"
+                    }
+                  ],
+                  "name": "Element 1778924429200",
+                  "placement": {
+                    "height": 100,
+                    "left": 0,
+                    "rotation": 0,
+                    "top": 0,
+                    "width": 100
+                  },
+                  "type": "frame"
+                },
+                "showAdvancedTypes": true,
+                "tooltip": {
+                  "disableForOneClick": false,
+                  "mode": "single"
+                },
+                "zoomToContent": false
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "#5d5a5a"
+                      },
+                      {
+                        "value": 0,
+                        "color": "blue"
+                      },
+                      {
+                        "value": 1,
+                        "color": "green"
+                      },
+                      {
+                        "value": 2,
+                        "color": "yellow"
+                      },
+                      {
+                        "value": 3,
+                        "color": "orange"
+                      },
+                      {
+                        "value": 4,
+                        "color": "purple"
+                      },
+                      {
+                        "value": 5,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-2": {
+        "kind": "Panel",
+        "spec": {
+          "id": 2,
+          "title": "",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "grafana-postgresql-datasource",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "dataset": "elemer_tvi",
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT\r\n  CASE\r\n    WHEN MAX(\"time\") IS NULL THEN 1\r\n    WHEN now() - MAX(\"time\") > interval '10 seconds' THEN 1\r\n    ELSE 0\r\n  END AS value\r\nFROM public.sensor_measurements\r\nWHERE sensor_used = true;\r\n",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.0.1",
+            "spec": {
+              "options": {
+                "colorMode": "background_solid",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "/.*/",
+                  "values": true
+                },
+                "showPercentChange": false,
+                "textMode": "value",
+                "wideLayout": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "0": {
+                          "text": "Данные поступают ",
+                          "index": 0
+                        },
+                        "1": {
+                          "text": "Нет данных более 10 сек",
+                          "index": 1
+                        }
+                      }
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      },
+                      {
+                        "value": 1,
+                        "color": "red"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              }
+            }
+          },
+          "transparent": true
+        }
+      }
+    },
+    "layout": {
+      "kind": "GridLayout",
+      "spec": {
+        "items": [
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 2,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-2"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 2,
+              "width": 24,
+              "height": 25,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-1"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "links": [],
+    "liveNow": false,
+    "preload": false,
+    "tags": [],
+    "timeSettings": {
+      "timezone": "browser",
+      "from": "now-6h",
+      "to": "now",
+      "autoRefresh": "1s",
+      "autoRefreshIntervals": [
+        "1s",
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h"
+      ],
+      "hideTimepicker": false,
+      "fiscalYearStartMonth": 0
+    },
+    "title": "Схема ДТП",
+    "variables": [],
+    "preferences": {
+      "layout": {
+        "kind": "GridLayout",
+        "spec": {
+          "items": []
+        }
+      }
+    }
+  },
+  "status": {}
+}

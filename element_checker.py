@@ -70,6 +70,7 @@ DEVICE_COUNT = 3
 SETTINGS_FILE = "element_checker_settings.xlsx"
 CHANNEL_SETTINGS_FILE = "channel_settings.json"
 DB_TABLE_NAME = "sensor_measurements"
+DB_INSERT_BATCH_SIZE = 200
 DEVICE_BAUD_REGISTER_ADDRESS = 0x0409
 DEVICE_BAUD_CODE_TO_RATE = {
     4: 2400,
@@ -688,12 +689,29 @@ class TimescaleMeasurementWriter:
         last_log = 0.0
         while True:
             item = self.queue.get()
+            task_done_count = 1
+            batch: list[TelemetryMeasurement] = []
+            stop_after_batch = False
             try:
                 should_stop = item is None and self.stop_event.is_set()
                 if item is None:
                     if should_stop:
                         break
                     continue
+                batch.append(item)
+
+                while len(batch) < DB_INSERT_BATCH_SIZE:
+                    try:
+                        next_item = self.queue.get_nowait()
+                    except queue.Empty:
+                        break
+                    task_done_count += 1
+                    if next_item is None:
+                        if self.stop_event.is_set():
+                            stop_after_batch = True
+                            break
+                        continue
+                    batch.append(next_item)
 
                 try:
                     if self._connection_closed(connection):
@@ -702,7 +720,7 @@ class TimescaleMeasurementWriter:
                     self._ensure_schema(connection)
                     if self._connection_closed(connection):
                         raise RuntimeError("database connection closed before insert")
-                    self._insert_batch(connection, [item])
+                    self._insert_batch(connection, batch)
                 except Exception as exc:
                     self._safe_rollback(connection)
                     self._safe_close(connection)
@@ -712,8 +730,12 @@ class TimescaleMeasurementWriter:
                     if now - last_log > 10:
                         self.log_callback(f"{self.storage_mode} save error: {exc}")
                         last_log = now
+
+                if stop_after_batch:
+                    break
             finally:
-                self.queue.task_done()
+                for _ in range(task_done_count):
+                    self.queue.task_done()
 
         self._safe_close(connection)
 

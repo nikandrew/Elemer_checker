@@ -1,8 +1,13 @@
 apiVersion: 1
 
+deleteDatasources:
+  - name: Elemer PostgreSQL
+    orgId: 1
+
 datasources:
   - name: Elemer PostgreSQL
     uid: elemer-postgres
+    orgId: 1
     type: postgres
     access: proxy
     url: postgres:5432
@@ -11,9 +16,10 @@ datasources:
     isDefault: true
     editable: true
     jsonData:
+      database: ${ELEMER_DB_NAME}
       sslmode: disable
       postgresVersion: 1600
-      timescaledb: false
+      timescaledb: true
     secureJsonData:
       password: ${ELEMER_DB_PASSWORD}
 

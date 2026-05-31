@@ -1,8 +1,9 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: timescale/timescaledb:latest-pg16
     container_name: elemer-postgres
     restart: unless-stopped
+    command: ["postgres", "-c", "shared_preload_libraries=timescaledb"]
     environment:
       POSTGRES_DB: ${ELEMER_DB_NAME:-elemer_tvi}
       POSTGRES_USER: ${ELEMER_DB_USER:-postgres}
@@ -29,11 +30,14 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_DEFAULT_THEME: light
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 1s
       ELEMER_DB_NAME: ${ELEMER_DB_NAME:-elemer_tvi}
       ELEMER_DB_USER: ${ELEMER_DB_USER:-postgres}
       ELEMER_DB_PASSWORD: ${ELEMER_DB_PASSWORD:-pass}
     ports:
       - "3001:3000"
     volumes:
+      - ./grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    #  - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./grafana/public/img/elemer:/usr/share/grafana/public/img/elemer:ro
