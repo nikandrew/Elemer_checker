@@ -108,3 +108,15 @@ Test (Инженерное меню)
 [2026-05-31 22:06:58] Application closing
 [2026-05-31 22:07:09] Application started
 [2026-05-31 22:56:29] Button clicked: Инженерное меню (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-01 10:58:33] Application started
+[2026-06-01 10:58:36] Button clicked: Инженерное меню (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-01 14:19:36] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-01 14:19:38] Application closing
+[2026-06-01 14:45:03] Application started
+[2026-06-01 15:03:52] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-01 15:06:07] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-01 15:10:19] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-01 15:12:37] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-01 15:14:38] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-01 15:14:38] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 09:30:30] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)

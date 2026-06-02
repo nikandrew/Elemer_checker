@@ -7,5 +7,6 @@ build/
 dist/
 postgres-data/
 logs/
-user_actions.log
+*.log
+/logs/user_actions.log
 /logs/user_actions.log
