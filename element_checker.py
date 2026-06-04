@@ -3,9 +3,11 @@ from __future__ import annotations
 import math
 import queue
 import struct
+import sys
 import threading
 import time
 import tkinter as tk
+import webbrowser
 import zipfile
 import json
 import os
@@ -71,6 +73,14 @@ SETTINGS_FILE = "element_checker_settings.xlsx"
 CHANNEL_SETTINGS_FILE = "channel_settings.json"
 DB_TABLE_NAME = "sensor_measurements"
 DB_INSERT_BATCH_SIZE = 200
+APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+GRAFANA_BASE_URL = "http://localhost:3001"
+GRAFANA_DASHBOARDS = (
+    ("Схема ТД", "ad2g4b7"),
+    ("Схема ДТП", "ad2g4bz"),
+    ("Графики ТД", "adk6mdc"),
+    ("Графики ДТП", "adk6m4"),
+)
 DEVICE_BAUD_REGISTER_ADDRESS = 0x0409
 DEVICE_BAUD_CODE_TO_RATE = {
     4: 2400,
@@ -559,6 +569,23 @@ class TimescaleMeasurementWriter:
             cursor.execute(
                 f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_NAME}_channel_time "
                 f"ON {DB_TABLE_NAME} (global_channel, time DESC)"
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS grafana_variable_state (
+                    dashboard_uid TEXT PRIMARY KEY,
+                    graph_1 INTEGER,
+                    graph_2 INTEGER,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO grafana_variable_state (dashboard_uid, graph_1, graph_2)
+                VALUES ('adk6mdc', 1, 1), ('adk6m4', 33, 33)
+                ON CONFLICT (dashboard_uid) DO NOTHING
+                """
             )
             cursor.execute(
                 f"ALTER TABLE {DB_TABLE_NAME} "
@@ -1181,7 +1208,7 @@ class ElementCheckerApp(tk.Tk):
         self.user_actions_text: tk.Text | None = None
         self.log_lines: list[str] = []
         self.user_action_lines: list[str] = []
-        self.user_action_log_path = Path(__file__).with_name("logs") / "user_actions.log"
+        self.user_action_log_path = APP_DIR / "logs" / "user_actions.log"
         self.auto_poll_next_due: dict[tuple[int, int], float] = {}
         self.export_start_entry: ttk.Entry | None = None
         self.export_end_entry: ttk.Entry | None = None
@@ -1193,8 +1220,8 @@ class ElementCheckerApp(tk.Tk):
         self.measurement_export_from: datetime | None = None
         self.next_hourly_export_at: datetime | None = None
         self.pending_stop_export = False
-        self.sensor_settings, self.sensor_settings_warning = load_sensor_settings(Path(__file__).with_name(SETTINGS_FILE))
-        self.channel_settings_path = Path(__file__).with_name(CHANNEL_SETTINGS_FILE)
+        self.sensor_settings, self.sensor_settings_warning = load_sensor_settings(APP_DIR / SETTINGS_FILE)
+        self.channel_settings_path = APP_DIR / CHANNEL_SETTINGS_FILE
         channel_settings_warning = load_channel_settings(self.channel_settings_path, self.sensor_settings)
         if channel_settings_warning:
             self.sensor_settings_warning = (
@@ -1202,7 +1229,7 @@ class ElementCheckerApp(tk.Tk):
                 if self.sensor_settings_warning
                 else channel_settings_warning
             )
-        load_env_file(Path(__file__).with_name(".env"))
+        load_env_file(APP_DIR / ".env")
         self.db_writer = TimescaleMeasurementWriter(lambda message: self.ui_queue.put(("log", message)))
         self.db_writer.start()
 
@@ -1307,7 +1334,7 @@ class ElementCheckerApp(tk.Tk):
             self.temperature_buttons.append(device_buttons)
 
         action_frame = ttk.Frame(self)
-        action_frame.grid(row=2, column=0, padx=12, pady=6, sticky="ew")
+        action_frame.grid(row=3, column=0, padx=12, pady=6, sticky="ew")
         action_frame.columnconfigure(0, weight=1)
         action_frame.columnconfigure(1, weight=1)
 
@@ -1317,8 +1344,18 @@ class ElementCheckerApp(tk.Tk):
             row=0, column=1, padx=(6, 0), sticky="ew"
         )
 
+        grafana_frame = ttk.LabelFrame(self, text="Окна Grafana")
+        grafana_frame.grid(row=2, column=0, padx=12, pady=6, sticky="ew")
+        for column, (title, dashboard_uid) in enumerate(GRAFANA_DASHBOARDS):
+            grafana_frame.columnconfigure(column, weight=1)
+            ttk.Button(
+                grafana_frame,
+                text=title,
+                command=lambda uid=dashboard_uid: self._open_grafana_dashboard(uid),
+            ).grid(row=0, column=column, padx=8, pady=8, sticky="ew")
+
         auto_frame = ttk.LabelFrame(self, text="Auto temperature polling")
-        auto_frame.grid(row=3, column=0, padx=12, pady=6, sticky="ew")
+        auto_frame.grid(row=4, column=0, padx=12, pady=6, sticky="ew")
         auto_frame.columnconfigure(2, weight=1)
 
         self.auto_start_button = ttk.Button(auto_frame, text="Start measurement", command=self._start_auto_poll)
@@ -1331,7 +1368,7 @@ class ElementCheckerApp(tk.Tk):
         )
 
         export_frame = ttk.LabelFrame(self, text="Выгрузка в Excel")
-        export_frame.grid(row=4, column=0, padx=12, pady=6, sticky="ew")
+        export_frame.grid(row=5, column=0, padx=12, pady=6, sticky="ew")
         export_frame.columnconfigure(1, weight=1)
         export_frame.columnconfigure(3, weight=1)
 
@@ -1359,6 +1396,16 @@ class ElementCheckerApp(tk.Tk):
             row=1, column=0, columnspan=7, padx=8, pady=(0, 6), sticky="ew"
         )
         self._refresh_export_period_state()
+
+    def _open_grafana_dashboard(self, dashboard_uid: str) -> None:
+        url = f"{GRAFANA_BASE_URL}/d/{dashboard_uid}?orgId=1&from=now-15m&to=now&refresh=1s"
+        opened = webbrowser.open(url, new=2)
+        if opened:
+            self.status_var.set(f"Открыт дашборд Grafana: {url}")
+            self._append_user_action(f"Grafana dashboard opened: {url}")
+        else:
+            self.status_var.set(f"Не удалось открыть дашборд Grafana: {url}")
+            self._append_user_action(f"Grafana dashboard open failed: {url}")
 
     def _sensor_trend(self, device_index: int, channel: int) -> str:
         history = self.temperature_history[device_index][channel - 1]
@@ -2782,7 +2829,7 @@ class ElementCheckerApp(tk.Tk):
             }
             rows.append(tuple(row_map.get(column) for column in export_columns))
 
-        export_dir = Path(__file__).with_name("measurements")
+        export_dir = APP_DIR / "measurements"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         path = export_dir / f"elemer_measurements_{label}_{timestamp}.xlsx"
         write_xlsx(path, export_columns, rows)

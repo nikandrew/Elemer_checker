@@ -11,16 +11,20 @@ import tkinter as tk
 from element_checker import (
     AUTO_SENSOR_POLL_PERIOD_S,
     DEVICE_COUNT,
+    SENSOR_KIND_HEAT_FLUX,
+    STEFAN_BOLTZMANN,
     TELEMETRY_CHANNELS,
     ElementCheckerApp,
     PortSettings,
+    apply_sensor_conversion,
     build_read_response_frame,
+    sensor_kind_code,
 )
 
 
-MODELER_MIN_VALUE = 5.0
-MODELER_MAX_VALUE = 35.0
-MODELER_MAX_STEP = 0.5
+MODELER_GREEN_JITTER = 0.3
+MODELER_MAX_STEP = 1.0
+MODELER_EXCURSION_CHANCE = 0.02
 MODELER_SENSOR_TYPE_CODE = 0
 
 
@@ -54,6 +58,10 @@ class ElementCheckerModelerApp(ElementCheckerApp):
     def __init__(self) -> None:
         super().__init__()
         self.modeler_values: list[list[float | None]] = [
+            [None for _channel in range(TELEMETRY_CHANNELS)]
+            for _device in range(DEVICE_COUNT)
+        ]
+        self.modeler_excursions: list[list[float | None]] = [
             [None for _channel in range(TELEMETRY_CHANNELS)]
             for _device in range(DEVICE_COUNT)
         ]
@@ -235,13 +243,92 @@ class ElementCheckerModelerApp(ElementCheckerApp):
         response = self._emulated_response(slave_addr, device_index, channel)
         self._handle_temperature_response(device_index, channel, response, slave_addr, MODELER_SENSOR_TYPE_CODE)
 
-    def _emulated_response(self, slave_addr: int, device_index: int, channel: int) -> bytes:
-        previous = self.modeler_values[device_index][channel - 1]
+    def _green_range(self, device_index: int, channel: int) -> tuple[float, float]:
+        sensor = self.sensor_settings[device_index][channel - 1]
+        if sensor.tmin is not None and sensor.tmax is not None and sensor.tmin < sensor.tmax:
+            return sensor.tmin, sensor.tmax
+        if sensor.tmin is not None:
+            return sensor.tmin, sensor.tmin + 2.0
+        if sensor.tmax is not None:
+            return sensor.tmax - 2.0, sensor.tmax
+        return 20.0, 22.0
+
+    def _high_excursion_target(self, device_index: int, channel: int) -> float:
+        sensor = self.sensor_settings[device_index][channel - 1]
+        green_min, green_max = self._green_range(device_index, channel)
+        upper_limits = [
+            value
+            for value in (sensor.tmax, sensor.twar, sensor.tcrit, sensor.temerg)
+            if value is not None
+        ]
+        highest_limit = max(upper_limits, default=green_max)
+        return highest_limit + 1.0
+
+    def _low_excursion_target(self, device_index: int, channel: int) -> float:
+        sensor = self.sensor_settings[device_index][channel - 1]
+        green_min, _green_max = self._green_range(device_index, channel)
+        lower_limit = sensor.tmin if sensor.tmin is not None else green_min
+        return lower_limit - 1.0
+
+    def _measurement_from_raw(self, device_index: int, channel: int, raw_temperature: float | None) -> float | None:
+        if raw_temperature is None:
+            return None
+        sensor = self.sensor_settings[device_index][channel - 1]
+        try:
+            return apply_sensor_conversion(raw_temperature, sensor)
+        except Exception:
+            return None
+
+    def _raw_from_measurement(self, device_index: int, channel: int, measurement: float) -> float:
+        sensor = self.sensor_settings[device_index][channel - 1]
+        if sensor_kind_code(sensor.sensor_type) == SENSOR_KIND_HEAT_FLUX:
+            emissivity = sensor.emissivity if sensor.emissivity > 0 else 1.0
+            kelvin = (measurement / (emissivity * STEFAN_BOLTZMANN)) ** 0.25
+            return kelvin - 273.15
+        if sensor.calibration_a == 0:
+            return measurement
+        return (measurement - sensor.calibration_b) / sensor.calibration_a
+
+    @staticmethod
+    def _move_toward(current: float, target: float) -> float:
+        if abs(target - current) <= MODELER_MAX_STEP:
+            return target
+        step = random.uniform(0.2, MODELER_MAX_STEP)
+        if target < current:
+            step = -step
+        return current + step
+
+    def _next_modeled_measurement(self, device_index: int, channel: int) -> float:
+        green_min, green_max = self._green_range(device_index, channel)
+        previous_raw = self.modeler_values[device_index][channel - 1]
+        previous = self._measurement_from_raw(device_index, channel, previous_raw)
         if previous is None:
-            raw_temperature = random.uniform(MODELER_MIN_VALUE, MODELER_MAX_VALUE)
-        else:
-            step = random.uniform(-MODELER_MAX_STEP, MODELER_MAX_STEP)
-            raw_temperature = min(MODELER_MAX_VALUE, max(MODELER_MIN_VALUE, previous + step))
+            return random.uniform(green_min, green_max)
+
+        target = self.modeler_excursions[device_index][channel - 1]
+        if target is None and random.random() < MODELER_EXCURSION_CHANCE:
+            if random.random() < 0.8:
+                target = self._high_excursion_target(device_index, channel)
+            else:
+                target = self._low_excursion_target(device_index, channel)
+            self.modeler_excursions[device_index][channel - 1] = target
+
+        if target is not None:
+            next_value = self._move_toward(previous, target)
+            if next_value == target:
+                if green_min <= target <= green_max:
+                    self.modeler_excursions[device_index][channel - 1] = None
+                else:
+                    self.modeler_excursions[device_index][channel - 1] = random.uniform(green_min, green_max)
+            return next_value
+
+        if green_min <= previous <= green_max:
+            return min(green_max, max(green_min, previous + random.uniform(-MODELER_GREEN_JITTER, MODELER_GREEN_JITTER)))
+        return self._move_toward(previous, random.uniform(green_min, green_max))
+
+    def _emulated_response(self, slave_addr: int, device_index: int, channel: int) -> bytes:
+        measurement = self._next_modeled_measurement(device_index, channel)
+        raw_temperature = self._raw_from_measurement(device_index, channel, measurement)
         self.modeler_values[device_index][channel - 1] = raw_temperature
         payload = (
             struct.pack(">f", raw_temperature)

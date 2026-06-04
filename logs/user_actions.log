@@ -120,3 +120,58 @@ Test (Инженерное меню)
 [2026-06-01 15:14:38] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
 [2026-06-01 15:14:38] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
 [2026-06-02 09:30:30] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 10:01:20] Application started
+[2026-06-02 11:19:21] Button clicked: Инженерное меню (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 11:19:25] Button clicked: Загрузить Excel (Инженерное меню)
+[2026-06-02 11:19:27] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 11:19:33] Button clicked: Инженерное меню (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 11:19:37] Excel settings load selected: C:\Nikitin\Soft\Elemer_checker\channel_settings_true.xlsx
+[2026-06-02 11:19:37] Channel settings loaded from Excel and saved to JSON: C:\Nikitin\Soft\Elemer_checker\channel_settings_true.xlsx
+[2026-06-02 11:19:38] Button clicked: Загрузить Excel (Инженерное меню)
+[2026-06-02 11:19:45] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 11:46:05] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 11:53:04] Application closing
+[2026-06-02 11:53:12] Application started
+[2026-06-02 12:24:40] Application closing
+[2026-06-02 12:24:43] Application started
+[2026-06-02 12:29:27] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 12:31:25] Application closing
+[2026-06-02 12:31:32] Application started
+[2026-06-02 13:14:05] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 13:16:00] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 13:16:09] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 13:16:54] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 13:17:04] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 13:17:10] Application closing
+[2026-06-02 14:54:56] Application started
+[2026-06-02 14:55:03] Grafana dashboard opened: http://localhost:3001/d/ad2g4b7
+[2026-06-02 14:55:03] Button clicked: Схема ТД (Element TM5104 Modbus Checker)
+[2026-06-02 14:55:11] Grafana dashboard opened: http://localhost:3001/d/ad2g4bz
+[2026-06-02 14:55:11] Button clicked: Схема ДТП (Element TM5104 Modbus Checker)
+[2026-06-02 14:55:16] Grafana dashboard opened: http://localhost:3001/d/adk6mdc
+[2026-06-02 14:55:16] Button clicked: Графики ТД (Element TM5104 Modbus Checker)
+[2026-06-02 14:55:18] Grafana dashboard opened: http://localhost:3001/d/adk6m4
+[2026-06-02 14:55:18] Button clicked: Графики ДТП (Element TM5104 Modbus Checker)
+[2026-06-02 14:55:26] Application closing
+[2026-06-02 15:07:21] Application started
+[2026-06-02 15:07:26] Grafana dashboard opened: http://localhost:3001/d/ad2g4b7
+[2026-06-02 15:07:26] Button clicked: Схема ТД (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 15:07:35] Grafana dashboard opened: http://localhost:3001/d/ad2g4bz
+[2026-06-02 15:07:35] Button clicked: Схема ДТП (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 15:07:36] Grafana dashboard opened: http://localhost:3001/d/adk6mdc
+[2026-06-02 15:07:36] Button clicked: Графики ТД (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 15:07:36] Grafana dashboard opened: http://localhost:3001/d/adk6m4
+[2026-06-02 15:07:36] Button clicked: Графики ДТП (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 15:14:16] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 15:15:19] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 15:15:23] Button clicked: Stop measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 15:31:02] Button clicked: Start measurement (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 15:31:03] Grafana dashboard opened: http://localhost:3001/d/ad2g4b7
+[2026-06-02 15:31:03] Button clicked: Схема ТД (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 15:31:06] Grafana dashboard opened: http://localhost:3001/d/ad2g4bz
+[2026-06-02 15:31:06] Button clicked: Схема ДТП (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 15:31:07] Grafana dashboard opened: http://localhost:3001/d/adk6mdc
+[2026-06-02 15:31:07] Button clicked: Графики ТД (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-02 15:31:07] Grafana dashboard opened: http://localhost:3001/d/adk6m4
+[2026-06-02 15:31:07] Button clicked: Графики ДТП (Element TM5104 Modbus Checker - ЭМУЛЯТОР)
+[2026-06-03 10:40:39] Application closing

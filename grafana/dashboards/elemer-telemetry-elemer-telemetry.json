@@ -1,0 +1,521 @@
+{
+  "kind": "Dashboard",
+  "apiVersion": "dashboard.grafana.app/v0alpha1",
+  "metadata": {
+    "name": "elemer-telemetry",
+    "namespace": "default",
+    "uid": "98a2b2f9-ee87-43e3-9b81-018560f336a7",
+    "generation": 1,
+    "creationTimestamp": "2026-05-31T11:09:52Z",
+    "labels": {
+      "grafana.app/deprecatedInternalID": "2897444316389376"
+    },
+    "annotations": {
+      "grafana.app/createdBy": "access-policy:service",
+      "grafana.app/folder": "dfnpukwyy1p8gf",
+      "grafana.app/managedBy": "classic-file-provisioning",
+      "grafana.app/managerAllowsEdits": "true",
+      "grafana.app/managerId": "Elemer",
+      "grafana.app/sourceChecksum": "f696ccea18589b1184825f3759893ae5",
+      "grafana.app/sourcePath": "/var/lib/grafana/dashboards/elemer-telemetry.json",
+      "grafana.app/sourceTimestamp": "1780124505000"
+    },
+    "managedFields": [
+      {
+        "manager": "grafana",
+        "operation": "Update",
+        "apiVersion": "dashboard.grafana.app/v0alpha1",
+        "time": "2026-05-31T11:09:52Z",
+        "fieldsType": "FieldsV1",
+        "fieldsV1": {
+          "f:metadata": {
+            "f:annotations": {
+              ".": {},
+              "f:grafana.app/folder": {},
+              "f:grafana.app/managedBy": {},
+              "f:grafana.app/managerAllowsEdits": {},
+              "f:grafana.app/managerId": {},
+              "f:grafana.app/sourceChecksum": {},
+              "f:grafana.app/sourcePath": {},
+              "f:grafana.app/sourceTimestamp": {}
+            }
+          },
+          "f:spec": {
+            "f:annotations": {
+              ".": {},
+              "f:list": {}
+            },
+            "f:editable": {},
+            "f:fiscalYearStartMonth": {},
+            "f:graphTooltip": {},
+            "f:id": {},
+            "f:links": {},
+            "f:liveNow": {},
+            "f:panels": {},
+            "f:refresh": {},
+            "f:schemaVersion": {},
+            "f:tags": {},
+            "f:templating": {
+              ".": {},
+              "f:list": {}
+            },
+            "f:time": {
+              ".": {},
+              "f:from": {},
+              "f:to": {}
+            },
+            "f:timepicker": {},
+            "f:timezone": {},
+            "f:title": {},
+            "f:uid": {},
+            "f:version": {},
+            "f:weekStart": {}
+          }
+        }
+      }
+    ]
+  },
+  "spec": {
+    "annotations": {
+      "list": [
+        {
+          "builtIn": 1,
+          "datasource": {
+            "type": "grafana",
+            "uid": "-- Grafana --"
+          },
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "target": {
+            "limit": 100,
+            "matchAny": false,
+            "tags": [],
+            "type": "dashboard"
+          },
+          "type": "dashboard"
+        }
+      ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": null,
+    "links": [],
+    "liveNow": false,
+    "panels": [
+      {
+        "datasource": {
+          "type": "postgres",
+          "uid": "elemer-postgres"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisBorderShow": false,
+              "axisCenteredZero": false,
+              "axisColorMode": "text",
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 8,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "viz": false
+              },
+              "insertNulls": false,
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "pointSize": 3,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "celsius"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 12,
+          "w": 24,
+          "x": 0,
+          "y": 0
+        },
+        "id": 1,
+        "options": {
+          "legend": {
+            "calcs": [
+              "lastNotNull",
+              "min",
+              "max"
+            ],
+            "displayMode": "table",
+            "placement": "bottom",
+            "showLegend": true
+          },
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "postgres",
+              "uid": "elemer-postgres"
+            },
+            "editorMode": "code",
+            "format": "time_series",
+            "rawQuery": true,
+            "rawSql": "SELECT $__timeGroupAlias(time, $__interval), concat('E', device_index, ' CH', channel, ' ', coalesce(sensor_name, '')) AS metric, avg(temperature) AS value FROM sensor_measurements WHERE $__timeFilter(time) AND valid = TRUE AND temperature IS NOT NULL GROUP BY 1, 2 ORDER BY 1",
+            "refId": "A",
+            "sql": {
+              "columns": [
+                {
+                  "parameters": [],
+                  "type": "function"
+                }
+              ],
+              "groupBy": [
+                {
+                  "property": {
+                    "type": "string"
+                  },
+                  "type": "groupBy"
+                }
+              ],
+              "limit": 50
+            }
+          }
+        ],
+        "title": "Температура по каналам",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "postgres",
+          "uid": "elemer-postgres"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [
+              {
+                "options": {
+                  "-1": {
+                    "color": "gray",
+                    "index": 0,
+                    "text": "ошибка"
+                  },
+                  "0": {
+                    "color": "blue",
+                    "index": 1,
+                    "text": "ниже Tmin"
+                  },
+                  "1": {
+                    "color": "green",
+                    "index": 2,
+                    "text": "норма"
+                  },
+                  "2": {
+                    "color": "yellow",
+                    "index": 3,
+                    "text": "выше Tmax"
+                  },
+                  "3": {
+                    "color": "orange",
+                    "index": 4,
+                    "text": "выше Twar"
+                  },
+                  "4": {
+                    "color": "purple",
+                    "index": 5,
+                    "text": "выше Tcrit"
+                  },
+                  "5": {
+                    "color": "red",
+                    "index": 6,
+                    "text": "выше Temerg"
+                  }
+                },
+                "type": "value"
+              }
+            ],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "gray",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                },
+                {
+                  "color": "yellow",
+                  "value": 2
+                },
+                {
+                  "color": "orange",
+                  "value": 3
+                },
+                {
+                  "color": "purple",
+                  "value": 4
+                },
+                {
+                  "color": "red",
+                  "value": 5
+                }
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "temperature"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "celsius"
+                },
+                {
+                  "id": "decimals",
+                  "value": 2
+                }
+              ]
+            }
+          ]
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 16,
+          "x": 0,
+          "y": 12
+        },
+        "id": 2,
+        "options": {
+          "cellHeight": "sm",
+          "footer": {
+            "countRows": false,
+            "fields": "",
+            "reducer": [
+              "sum"
+            ],
+            "show": false
+          },
+          "showHeader": true
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "postgres",
+              "uid": "elemer-postgres"
+            },
+            "editorMode": "code",
+            "format": "table",
+            "rawQuery": true,
+            "rawSql": "SELECT DISTINCT ON (global_channel) time, device_label, channel, sensor_name, temperature, color_level, measurement_error_text FROM sensor_measurements WHERE $__timeFilter(time) ORDER BY global_channel, time DESC",
+            "refId": "A"
+          }
+        ],
+        "title": "Последние значения каналов",
+        "type": "table"
+      },
+      {
+        "datasource": {
+          "type": "postgres",
+          "uid": "elemer-postgres"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 8,
+          "x": 16,
+          "y": 12
+        },
+        "id": 3,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "none",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "showPercentChange": false,
+          "textMode": "auto",
+          "wideLayout": true
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "postgres",
+              "uid": "elemer-postgres"
+            },
+            "editorMode": "code",
+            "format": "table",
+            "rawQuery": true,
+            "rawSql": "SELECT count(*) AS rows_in_range FROM sensor_measurements WHERE $__timeFilter(time)",
+            "refId": "A"
+          }
+        ],
+        "title": "Строк в выбранном периоде",
+        "type": "stat"
+      },
+      {
+        "datasource": {
+          "type": "postgres",
+          "uid": "elemer-postgres"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "dateTimeAsIso"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 5,
+          "w": 8,
+          "x": 16,
+          "y": 16
+        },
+        "id": 4,
+        "options": {
+          "colorMode": "none",
+          "graphMode": "none",
+          "justifyMode": "auto",
+          "orientation": "auto",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "showPercentChange": false,
+          "textMode": "auto",
+          "wideLayout": true
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "postgres",
+              "uid": "elemer-postgres"
+            },
+            "editorMode": "code",
+            "format": "table",
+            "rawQuery": true,
+            "rawSql": "SELECT max(time) AS last_measurement FROM sensor_measurements",
+            "refId": "A"
+          }
+        ],
+        "title": "Последняя запись",
+        "type": "stat"
+      }
+    ],
+    "refresh": "1s",
+    "schemaVersion": 39,
+    "tags": [
+      "elemer",
+      "telemetry"
+    ],
+    "templating": {
+      "list": []
+    },
+    "time": {
+      "from": "now-15m",
+      "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "browser",
+    "title": "Elemer Telemetry",
+    "weekStart": "",
+    "timeSettings": {
+      "timezone": "browser",
+      "from": "now-15m",
+      "to": "now",
+      "autoRefresh": "1s",
+      "autoRefreshIntervals": [
+        "1s",
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h"
+      ],
+      "hideTimepicker": false,
+      "fiscalYearStartMonth": 0
+    }
+  },
+  "status": {}
+}
