@@ -16,16 +16,16 @@
       "grafana.app/managedBy": "classic-file-provisioning",
       "grafana.app/managerAllowsEdits": "true",
       "grafana.app/managerId": "Elemer",
-      "grafana.app/sourceChecksum": "194f254c442d3b419f7a84fed77c7a9f",
+      "grafana.app/sourceChecksum": "c67c4795c29f0942d9b18952047bc179",
       "grafana.app/sourcePath": "/var/lib/grafana/dashboards/elemer-telemetry-elemer-telemetry.json",
-      "grafana.app/sourceTimestamp": "1781087368000"
+      "grafana.app/sourceTimestamp": "1780984337000"
     },
     "managedFields": [
       {
         "manager": "grafana",
         "operation": "Update",
         "apiVersion": "dashboard.grafana.app/v0alpha1",
-        "time": "2026-06-10T10:29:32Z",
+        "time": "2026-06-09T05:52:31Z",
         "fieldsType": "FieldsV1",
         "fieldsV1": {
           "f:metadata": {

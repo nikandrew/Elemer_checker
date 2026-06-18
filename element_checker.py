@@ -42,22 +42,22 @@ except ImportError:  # pragma: no cover - DB saving is disabled at runtime
 DB_DRIVER = "psycopg3" if psycopg is not None else "psycopg2" if psycopg2 is not None else ""
 
 FUNCTIONS = {
-    "01 - Read Coils": 0x01,
-    "02 - Read Discrete Inputs": 0x02,
-    "03 - Read Holding Registers": 0x03,
-    "04 - Read Input Registers": 0x04,
-    "05 - Write Single Coil": 0x05,
-    "06 - Write Single Register": 0x06,
+    "01 - Чтение катушек": 0x01,
+    "02 - Чтение дискретных входов": 0x02,
+    "03 - Чтение регистров хранения": 0x03,
+    "04 - Чтение входных регистров": 0x04,
+    "05 - Запись одной катушки": 0x05,
+    "06 - Запись одного регистра": 0x06,
 }
 
 EXCEPTION_CODES = {
-    0x01: "Illegal Function",
-    0x02: "Illegal Data Address",
-    0x03: "Illegal Data Value",
-    0x04: "Slave Device Failure",
-    0x06: "Slave Device Busy",
-    0x20: "Invalid data length",
-    0x21: "Read-only access",
+    0x01: "Недопустимая функция",
+    0x02: "Недопустимый адрес данных",
+    0x03: "Недопустимое значение данных",
+    0x04: "Ошибка ведомого устройства",
+    0x06: "Ведомое устройство занято",
+    0x20: "Недопустимая длина данных",
+    0x21: "Доступ только для чтения",
 }
 
 READ_FUNCTIONS = {0x01, 0x02, 0x03, 0x04}
@@ -77,10 +77,13 @@ APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
 GRAFANA_BASE_URL = "http://localhost:3001"
 GRAFANA_DASHBOARDS = (
     ("Схема ТД", "ad2g4b7"),
-    ("Схема ДТП", "ad2g4bz"),
     ("Графики ТД", "adk6mdc"),
+    ("Скорости ТД", "td-speeds"),
+    ("Схема ДТП", "ad2g4bz"),
     ("Графики ДТП", "adk6m4"),
+    ("Скорости ДТП", "dtp-speeds"),
 )
+GRAFANA_DASHBOARD_BUTTON_COLUMNS = 3
 DEVICE_BAUD_REGISTER_ADDRESS = 0x0409
 DEVICE_BAUD_CODE_TO_RATE = {
     4: 2400,
@@ -95,12 +98,31 @@ DEVICE_BAUD_RATE_TO_CODE = {rate: code for code, rate in DEVICE_BAUD_CODE_TO_RAT
 SENSOR_KIND_TEMPERATURE = 1
 SENSOR_KIND_HEAT_FLUX = 2
 AUTO_SENSOR_POLL_PERIOD_S = 0.5
+AUTO_POLL_PERIOD_OPTIONS = {
+    "100 мс": 0.1,
+    "500 мс": 0.5,
+    "1 с": 1.0,
+    "2 с": 2.0,
+}
 STEFAN_BOLTZMANN = 5.670374419e-8
 TEMP_LOW_COLOR = "#9fd7ff"
 TEMP_OK_COLOR = "#9fe6a0"
-TEMP_HIGH_COLOR = "#ff9b9b"
+TEMP_WARN_COLOR = "#fff176"
+TEMP_ALARM_COLOR = "#ffb74d"
+TEMP_CRIT_COLOR = "#ba68c8"
+TEMP_EMERG_COLOR = "#ff8a80"
+TEMP_ERROR_COLOR = "#d9d9d9"
 TEMP_IDLE_COLOR = "#f0f0f0"
 TEMP_DISABLED_COLOR = "#d9d9d9"
+TEMP_LEVEL_COLORS = {
+    -1: TEMP_ERROR_COLOR,
+    0: TEMP_LOW_COLOR,
+    1: TEMP_OK_COLOR,
+    2: TEMP_WARN_COLOR,
+    3: TEMP_ALARM_COLOR,
+    4: TEMP_CRIT_COLOR,
+    5: TEMP_EMERG_COLOR,
+}
 
 
 @dataclass
@@ -167,25 +189,25 @@ class TelemetryMeasurement:
 
 
 MEASUREMENT_ERROR_TEXT = {
-    0: "OK",
-    1: "Sensor circuit break",
-    2: "Division by zero or result is out of range",
-    3: "Nonexistent channel number",
-    4: "Parameter memory read error",
-    5: "Parameter memory write error",
-    6: "No result",
-    8: "Overflow high",
-    10: "Unknown thermocouple cold junction temperature",
-    11: "ADC data read error",
-    12: "Input voltage measurement error",
-    13: "Overflow low",
-    14: "Unknown sensor type",
-    15: "Parameter memory data error",
-    16: "Invalid parameter number",
-    17: "Invalid parameter value",
-    19: "ADC internal error",
-    21: "Unknown secondary processing type",
-    22: "Secondary processing parameter error",
+    0: "Норма",
+    1: "Обрыв цепи датчика",
+    2: "Деление на ноль или результат вне диапазона",
+    3: "Несуществующий номер канала",
+    4: "Ошибка чтения памяти параметров",
+    5: "Ошибка записи памяти параметров",
+    6: "Нет результата",
+    8: "Переполнение вверх",
+    10: "Неизвестная температура холодного спая термопары",
+    11: "Ошибка чтения данных АЦП",
+    12: "Ошибка измерения входного напряжения",
+    13: "Переполнение вниз",
+    14: "Неизвестный тип датчика",
+    15: "Ошибка данных памяти параметров",
+    16: "Недопустимый номер параметра",
+    17: "Недопустимое значение параметра",
+    19: "Внутренняя ошибка АЦП",
+    21: "Неизвестный тип вторичной обработки",
+    22: "Ошибка параметра вторичной обработки",
 }
 
 SENSOR_TYPE_TEXT = {
@@ -238,11 +260,11 @@ def check_crc(frame: bytes) -> bool:
 
 def build_request(slave_addr: int, function_code: int, start_address: int, quantity: int) -> bytes:
     if not 0 <= slave_addr <= 247:
-        raise ValueError("Slave address must be 0..247")
+        raise ValueError("Адрес устройства должен быть в диапазоне 0..247")
     if not 0 <= start_address <= 0xFFFF:
-        raise ValueError("Start address must be 0..65535")
+        raise ValueError("Начальный адрес должен быть в диапазоне 0..65535")
     if not 0 <= quantity <= 0xFFFF:
-        raise ValueError("Quantity/value must be 0..65535")
+        raise ValueError("Количество/значение должно быть в диапазоне 0..65535")
 
     payload = bytes(
         [
@@ -274,54 +296,54 @@ def expected_response_size(function_code: int, quantity: int) -> int:
 
 def validate_read_response(response: bytes, slave_addr: int, function_code: int, expected_data_len: int) -> ModbusResult:
     if not response:
-        return ModbusResult(False, "timeout/no data")
+        return ModbusResult(False, "таймаут/нет данных")
     if len(response) < 5:
-        return ModbusResult(False, f"too short: {len(response)} byte(s)")
+        return ModbusResult(False, f"слишком короткий ответ: {len(response)} байт")
     if not check_crc(response):
-        return ModbusResult(False, "CRC mismatch")
+        return ModbusResult(False, "ошибка CRC")
     if response[0] != slave_addr:
-        return ModbusResult(False, f"wrong slave addr: {response[0]}")
+        return ModbusResult(False, f"неверный адрес устройства: {response[0]}")
 
     if response[1] == function_code + 0x80:
         code = response[2]
-        description = EXCEPTION_CODES.get(code, "Unknown exception")
-        return ModbusResult(False, f"Modbus exception {code:02X}: {description}")
+        description = EXCEPTION_CODES.get(code, "неизвестное исключение")
+        return ModbusResult(False, f"исключение Modbus {code:02X}: {description}")
 
     if response[1] != function_code:
-        return ModbusResult(False, f"wrong function: {response[1]:02X}")
+        return ModbusResult(False, f"неверная функция: {response[1]:02X}")
     if response[2] != expected_data_len:
-        return ModbusResult(False, f"wrong byte count: {response[2]}, expected {expected_data_len}")
+        return ModbusResult(False, f"неверное число байт: {response[2]}, ожидалось {expected_data_len}")
 
     expected_frame_len = 3 + expected_data_len + 2
     if len(response) != expected_frame_len:
-        return ModbusResult(False, f"wrong frame length: {len(response)}, expected {expected_frame_len}")
+        return ModbusResult(False, f"неверная длина кадра: {len(response)}, ожидалось {expected_frame_len}")
 
     return ModbusResult(True, "valid", response[3 : 3 + expected_data_len])
 
 
 def validate_write_single_response(response: bytes, request: bytes) -> ModbusResult:
     if not response:
-        return ModbusResult(False, "timeout/no data")
+        return ModbusResult(False, "таймаут/нет данных")
     if len(response) < 5:
-        return ModbusResult(False, f"too short: {len(response)} byte(s)")
+        return ModbusResult(False, f"слишком короткий ответ: {len(response)} байт")
     if not check_crc(response):
-        return ModbusResult(False, "CRC mismatch")
+        return ModbusResult(False, "ошибка CRC")
     if response[0] != request[0]:
-        return ModbusResult(False, f"wrong slave addr: {response[0]}")
+        return ModbusResult(False, f"неверный адрес устройства: {response[0]}")
     if response[1] == request[1] + 0x80:
         code = response[2]
-        description = EXCEPTION_CODES.get(code, "Unknown exception")
-        return ModbusResult(False, f"Modbus exception {code:02X}: {description}")
+        description = EXCEPTION_CODES.get(code, "неизвестное исключение")
+        return ModbusResult(False, f"исключение Modbus {code:02X}: {description}")
     if response != request:
-        return ModbusResult(False, f"write echo mismatch: {format_hex(response)}")
+        return ModbusResult(False, f"ответ на запись не совпадает: {format_hex(response)}")
     return ModbusResult(True, "valid")
 
 
 def parse_int(value: str, base_name: str) -> int:
     value = value.strip()
     if not value:
-        raise ValueError("Empty numeric value")
-    if base_name == "Hex":
+        raise ValueError("Пустое числовое значение")
+    if base_name in {"Hex", "Шестнадцатеричный"}:
         return int(value, 16)
     return int(value, 10)
 
@@ -332,16 +354,16 @@ def format_hex(data: bytes) -> str:
 
 def decode_tm5104_temperature(data: bytes) -> float:
     if len(data) != 4:
-        raise ValueError(f"Temperature payload must contain 4 bytes, got {len(data)}")
+        raise ValueError(f"Поле температуры должно содержать 4 байта, получено {len(data)}")
     value = struct.unpack(">f", data)[0]
     if not math.isfinite(value):
-        raise ValueError("Temperature is not finite")
+        raise ValueError("Температура не является конечным числом")
     return value
 
 
 def decode_ushort(data: bytes) -> int:
     if len(data) != 2:
-        raise ValueError(f"ushort payload must contain 2 bytes, got {len(data)}")
+        raise ValueError(f"Поле ushort должно содержать 2 байта, получено {len(data)}")
     return int.from_bytes(data, byteorder="big", signed=False)
 
 
@@ -383,7 +405,7 @@ class TimescaleMeasurementWriter:
         self.last_insert_log = 0.0
         self.storage_mode = "PostgreSQL"
         if not self.enabled:
-            self.disabled_reason = "PostgreSQL driver is not installed; DB saving is disabled"
+            self.disabled_reason = "Драйвер PostgreSQL не установлен; сохранение в БД отключено"
 
     def start(self) -> None:
         if not self.enabled:
@@ -392,7 +414,7 @@ class TimescaleMeasurementWriter:
         if self.thread is not None and self.thread.is_alive():
             return
         self.log_callback(
-            "TimescaleDB writer starting: "
+            "Запуск записи TimescaleDB: "
             f"{self.connection_kwargs['host']}:{self.connection_kwargs['port']}/{self.connection_kwargs['dbname']} "
             f"user={self.connection_kwargs['user']} driver={DB_DRIVER}"
         )
@@ -437,10 +459,10 @@ class TimescaleMeasurementWriter:
                 if not exists:
                     safe_dbname = str(dbname).replace('"', '""')
                     cursor.execute(f'CREATE DATABASE "{safe_dbname}"')
-                    self.log_callback(f"PostgreSQL database created: {dbname}")
+                    self.log_callback(f"База данных PostgreSQL создана: {dbname}")
             self.database_ready = True
         except Exception as exc:
-            self.log_callback(f"PostgreSQL database auto-create skipped: {exc}")
+            self.log_callback(f"Автосоздание базы данных PostgreSQL пропущено: {exc}")
         finally:
             if connection is not None:
                 connection.close()
@@ -485,7 +507,7 @@ class TimescaleMeasurementWriter:
             self._safe_rollback(connection)
             if self._connection_closed(connection):
                 raise
-            self.log_callback(f"TimescaleDB availability check skipped: {exc}")
+            self.log_callback(f"Проверка доступности TimescaleDB пропущена: {exc}")
 
         if timescaledb_available:
             try:
@@ -499,7 +521,7 @@ class TimescaleMeasurementWriter:
                 if self._connection_closed(connection):
                     raise
                 timescaledb_available = False
-                self.log_callback(f"TimescaleDB preload check skipped: {exc}")
+                self.log_callback(f"Проверка preload TimescaleDB пропущена: {exc}")
 
         if timescaledb_available:
             try:
@@ -509,11 +531,11 @@ class TimescaleMeasurementWriter:
             except Exception as exc:
                 self._safe_rollback(connection)
                 timescaledb_available = False
-                self.log_callback(f"TimescaleDB extension enable skipped: {exc}")
+                self.log_callback(f"Включение расширения TimescaleDB пропущено: {exc}")
         elif timescaledb_installed:
-            self.log_callback("TimescaleDB is not preloaded; saving to a regular PostgreSQL table")
+            self.log_callback("TimescaleDB не загружен через preload; сохранение идет в обычную таблицу PostgreSQL")
         else:
-            self.log_callback("TimescaleDB extension is not installed on this PostgreSQL server; saving to a regular table")
+            self.log_callback("Расширение TimescaleDB не установлено на этом сервере PostgreSQL; сохранение идет в обычную таблицу")
 
         if timescaledb_available:
             try:
@@ -526,7 +548,7 @@ class TimescaleMeasurementWriter:
                 if self._connection_closed(connection):
                     raise
                 timescaledb_available = False
-                self.log_callback(f"TimescaleDB function check skipped: {exc}")
+                self.log_callback(f"Проверка функции TimescaleDB пропущена: {exc}")
 
         self.storage_mode = "TimescaleDB" if timescaledb_available else "PostgreSQL"
 
@@ -569,6 +591,12 @@ class TimescaleMeasurementWriter:
             cursor.execute(
                 f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_NAME}_channel_time "
                 f"ON {DB_TABLE_NAME} (global_channel, time DESC)"
+            )
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_NAME}_active_kind_time "
+                f"ON {DB_TABLE_NAME} (sensor_kind_code, time DESC, global_channel) "
+                f"INCLUDE (temperature, sensor_name) "
+                f"WHERE sensor_used = true AND valid = true AND temperature IS NOT NULL"
             )
             cursor.execute(
                 """
@@ -627,11 +655,11 @@ class TimescaleMeasurementWriter:
                 if self._connection_closed(connection):
                     raise
                 self.storage_mode = "PostgreSQL"
-                self.log_callback(f"Timescale hypertable setup skipped; saving to a regular table: {exc}")
+                self.log_callback(f"Настройка гипертаблицы Timescale пропущена; сохранение идет в обычную таблицу: {exc}")
 
         self.schema_ready = True
         self.log_callback(
-            f"{self.storage_mode} saving enabled: "
+            f"Сохранение {self.storage_mode} включено: "
             f"{self.connection_kwargs['host']}:{self.connection_kwargs['port']}/{self.connection_kwargs['dbname']}"
         )
 
@@ -746,7 +774,7 @@ class TimescaleMeasurementWriter:
                         self.schema_ready = False
                     self._ensure_schema(connection)
                     if self._connection_closed(connection):
-                        raise RuntimeError("database connection closed before insert")
+                        raise RuntimeError("соединение с базой данных закрыто перед вставкой")
                     self._insert_batch(connection, batch)
                 except Exception as exc:
                     self._safe_rollback(connection)
@@ -755,7 +783,7 @@ class TimescaleMeasurementWriter:
                     self.schema_ready = False
                     now = time.monotonic()
                     if now - last_log > 10:
-                        self.log_callback(f"{self.storage_mode} save error: {exc}")
+                        self.log_callback(f"Ошибка сохранения {self.storage_mode}: {exc}")
                         last_log = now
 
                 if stop_after_batch:
@@ -857,7 +885,7 @@ def apply_sensor_conversion(raw_value: float, sensor: SensorSettings) -> float:
     if sensor_kind_code(sensor.sensor_type) == SENSOR_KIND_HEAT_FLUX:
         kelvin = raw_value + 273.15
         if kelvin < 0:
-            raise ValueError(f"Temperature below absolute zero: {raw_value}")
+            raise ValueError(f"Температура ниже абсолютного нуля: {raw_value}")
         return sensor.emissivity * STEFAN_BOLTZMANN * kelvin**4
     return sensor.calibration_a * raw_value + sensor.calibration_b
 
@@ -871,12 +899,12 @@ def measurement_coefficients(sensor: SensorSettings) -> tuple[float | None, floa
 def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | None]:
     sensors = _default_sensor_settings()
     if not path.exists():
-        return sensors, f"{path.name} not found, all sensors enabled"
+        return sensors, f"{path.name} не найден, все датчики включены"
 
     try:
         rows = _xlsx_rows(path)
         if not rows:
-            return sensors, f"{path.name} is empty, all sensors enabled"
+            return sensors, f"{path.name} пустой, все датчики включены"
 
         header_row = rows[0]
         headers = {value.strip().lower(): column for column, value in header_row.items() if value.strip()}
@@ -890,7 +918,7 @@ def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | 
         tmax_column = headers.get("tmax")
 
         if name_column is None or used_column is None:
-            return sensors, f"{path.name}: Name/Used columns not found, all sensors enabled"
+            return sensors, f"{path.name}: колонки Name/Used не найдены, все датчики включены"
 
         for row in rows[1:]:
             group_text = row.get(group_column, "") if group_column else ""
@@ -926,7 +954,7 @@ def load_sensor_settings(path: Path) -> tuple[list[list[SensorSettings]], str | 
                 tmax=tmax,
             )
     except Exception as exc:
-        return sensors, f"{path.name}: failed to read settings: {exc}"
+        return sensors, f"{path.name}: не удалось прочитать настройки: {exc}"
 
     return sensors, None
 
@@ -958,7 +986,7 @@ def load_channel_settings(path: Path, sensors: list[list[SensorSettings]]) -> st
                     if hasattr(sensor, key):
                         setattr(sensor, key, value)
     except Exception as exc:
-        return f"{path.name}: failed to read channel settings: {exc}"
+        return f"{path.name}: не удалось прочитать настройки каналов: {exc}"
 
     return None
 
@@ -1004,14 +1032,14 @@ def load_channel_settings_excel(path: Path, sensors: list[list[SensorSettings]])
     try:
         rows = _xlsx_rows(path)
         if not rows:
-            return f"{path.name}: Excel file is empty"
+            return f"{path.name}: файл Excel пустой"
 
         header_row = rows[0]
         headers = {value.strip().lower(): column for column, value in header_row.items() if value.strip()}
         required = {"device", "channel"}
         missing = sorted(required - set(headers))
         if missing:
-            return f"{path.name}: missing column(s): {', '.join(missing)}"
+            return f"{path.name}: отсутствуют колонки: {', '.join(missing)}"
 
         for row in rows[1:]:
             try:
@@ -1058,7 +1086,7 @@ def load_channel_settings_excel(path: Path, sensors: list[list[SensorSettings]])
                 elif field_name in {"tmin", "tmax", "twar", "tcrit", "temerg"}:
                     setattr(sensor, field_name, None)
     except Exception as exc:
-        return f"{path.name}: failed to read channel settings Excel: {exc}"
+        return f"{path.name}: не удалось прочитать настройки каналов из Excel: {exc}"
 
     return None
 
@@ -1187,7 +1215,7 @@ def write_xlsx(path: Path, columns: list[str], rows: list[tuple]) -> None:
 class ElementCheckerApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("Element TM5104 Modbus Checker")
+        self.title("Проверка Modbus Элемер TM5104")
         self.geometry("980x760")
         self.minsize(900, 680)
 
@@ -1240,25 +1268,28 @@ class ElementCheckerApp(tk.Tk):
         self.selected_device_var = tk.StringVar(value="1")
         self.device_speed_device_var = tk.StringVar(value="1")
         self.device_speed_var = tk.StringVar(value="115200")
-        self.device_speed_status_var = tk.StringVar(value="Speed is not checked")
+        self.device_speed_status_var = tk.StringVar(value="Скорость не проверена")
         self.scan_rate_var = tk.StringVar(value="1000")
-        self.function_var = tk.StringVar(value="03 - Read Holding Registers")
+        self.function_var = tk.StringVar(value="03 - Чтение регистров хранения")
         self.start_address_var = tk.StringVar(value="0500")
-        self.address_base_var = tk.StringVar(value="Hex")
+        self.address_base_var = tk.StringVar(value="Шестнадцатеричный")
         self.quantity_var = tk.StringVar(value="2")
         self.expected_var = tk.StringVar(value="")
         self.auto_poll_var = tk.BooleanVar(value=False)
-        self.auto_poll_status_var = tk.StringVar(value="Auto poll stopped")
+        self.auto_poll_status_var = tk.StringVar(value="Автоопрос остановлен")
+        self.auto_poll_period_var = tk.StringVar(value="500 мс")
+        self.auto_poll_period_s = AUTO_POLL_PERIOD_OPTIONS[self.auto_poll_period_var.get()]
         self.export_mode_var = tk.StringVar(value="За последний час")
         now_local = datetime.now()
         self.export_start_var = tk.StringVar(value=(now_local - timedelta(days=1)).strftime("%d.%m.%y %H:%M"))
         self.export_end_var = tk.StringVar(value=now_local.strftime("%d.%m.%y %H:%M"))
         self.export_status_var = tk.StringVar(value="Выгрузка готова")
+        self.applied_settings_snapshot = self._capture_settings_snapshot()
         self.quantity_var.trace_add("write", lambda *_args: self._refresh_expected())
 
         self._build_ui()
         self.bind_all("<ButtonRelease-1>", self._log_button_click, add="+")
-        self._append_user_action("Application started")
+        self._append_user_action("Приложение запущено")
         if self.sensor_settings_warning:
             self._append_log(self.sensor_settings_warning)
         self._refresh_expected()
@@ -1272,32 +1303,32 @@ class ElementCheckerApp(tk.Tk):
         top_frame.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="ew")
         top_frame.columnconfigure(6, weight=1)
 
-        self.connect_button = ttk.Button(top_frame, text="Connect port", command=self._toggle_port)
+        self.connect_button = ttk.Button(top_frame, text="Подключить порт", command=self._toggle_port)
         self.connect_button.grid(row=0, column=0, padx=(0, 8), sticky="w")
-        ttk.Button(top_frame, text="Settings", command=self._open_settings).grid(row=0, column=1, padx=(0, 12), sticky="w")
+        ttk.Button(top_frame, text="Настройки", command=self._open_settings).grid(row=0, column=1, padx=(0, 12), sticky="w")
         ttk.Button(top_frame, text="Инженерное меню", command=self._open_engineering_window).grid(
             row=0, column=2, padx=(0, 12), sticky="w"
         )
-        ttk.Button(top_frame, text="Logs", command=self._open_logs_window).grid(row=0, column=3, padx=(0, 12), sticky="w")
-        ttk.Button(top_frame, text="User actions", command=self._open_user_actions_window).grid(
+        ttk.Button(top_frame, text="Журнал", command=self._open_logs_window).grid(row=0, column=3, padx=(0, 12), sticky="w")
+        ttk.Button(top_frame, text="Действия пользователя", command=self._open_user_actions_window).grid(
             row=0, column=4, padx=(0, 12), sticky="w"
         )
 
-        self.status_var = tk.StringVar(value="Port disconnected")
+        self.status_var = tk.StringVar(value="Порт отключен")
         ttk.Label(top_frame, textvariable=self.status_var, anchor="w").grid(row=0, column=6, sticky="ew")
 
-        telemetry_frame = ttk.LabelFrame(self, text="TM5104 telemetry")
+        telemetry_frame = ttk.LabelFrame(self, text="Телеметрия TM5104")
         telemetry_frame.grid(row=1, column=0, padx=12, pady=6, sticky="ew")
         for column in range(DEVICE_COUNT):
             telemetry_frame.columnconfigure(column, weight=1)
 
         for device_index in range(DEVICE_COUNT):
-            device_frame = ttk.LabelFrame(telemetry_frame, text=f"Device {device_index + 1}")
+            device_frame = ttk.LabelFrame(telemetry_frame, text=f"Устройство {device_index + 1}")
             device_frame.grid(row=0, column=device_index, padx=6, pady=6, sticky="nsew")
             for column in range(4):
                 device_frame.columnconfigure(column, weight=1)
 
-            ttk.Label(device_frame, text="Slave address").grid(row=0, column=0, columnspan=2, padx=4, pady=(4, 2), sticky="e")
+            ttk.Label(device_frame, text="Адрес").grid(row=0, column=0, columnspan=2, padx=4, pady=(4, 2), sticky="e")
             ttk.Label(
                 device_frame,
                 textvariable=self.slave_vars[device_index],
@@ -1323,7 +1354,6 @@ class ElementCheckerApp(tk.Tk):
                     relief="raised",
                     bg=TEMP_IDLE_COLOR,
                     activebackground=TEMP_IDLE_COLOR,
-                    command=lambda dev=device_index, selected=channel: self._request_temperature(dev, selected),
                 )
                 button.grid(row=row, column=column, padx=3, pady=3, sticky="nsew")
                 if not sensor.used:
@@ -1333,42 +1363,48 @@ class ElementCheckerApp(tk.Tk):
             self.temperature_vars.append(device_values)
             self.temperature_buttons.append(device_buttons)
 
-        action_frame = ttk.Frame(self)
-        action_frame.grid(row=3, column=0, padx=12, pady=6, sticky="ew")
-        action_frame.columnconfigure(0, weight=1)
-        action_frame.columnconfigure(1, weight=1)
-
-        self.request_button = ttk.Button(action_frame, text="Send manual request", command=self._send_manual_request)
-        self.request_button.grid(row=0, column=0, padx=(0, 6), sticky="ew")
-        ttk.Button(action_frame, text="Request all temperatures", command=self._request_all_temperatures).grid(
-            row=0, column=1, padx=(6, 0), sticky="ew"
-        )
-
         grafana_frame = ttk.LabelFrame(self, text="Окна Grafana")
         grafana_frame.grid(row=2, column=0, padx=12, pady=6, sticky="ew")
-        for column, (title, dashboard_uid) in enumerate(GRAFANA_DASHBOARDS):
+        for column in range(GRAFANA_DASHBOARD_BUTTON_COLUMNS):
             grafana_frame.columnconfigure(column, weight=1)
+        for index, (title, dashboard_uid) in enumerate(GRAFANA_DASHBOARDS):
+            row, column = divmod(index, GRAFANA_DASHBOARD_BUTTON_COLUMNS)
             ttk.Button(
                 grafana_frame,
                 text=title,
                 command=lambda uid=dashboard_uid: self._open_grafana_dashboard(uid),
-            ).grid(row=0, column=column, padx=8, pady=8, sticky="ew")
+            ).grid(row=row, column=column, padx=8, pady=8, sticky="ew")
+        ttk.Button(
+            grafana_frame,
+            text="Открыть все графики",
+            command=self._open_all_grafana_dashboards,
+        ).grid(row=2, column=0, columnspan=GRAFANA_DASHBOARD_BUTTON_COLUMNS, padx=8, pady=(0, 8), sticky="ew")
 
-        auto_frame = ttk.LabelFrame(self, text="Auto temperature polling")
-        auto_frame.grid(row=4, column=0, padx=12, pady=6, sticky="ew")
-        auto_frame.columnconfigure(2, weight=1)
+        auto_frame = ttk.LabelFrame(self, text="Автоматический опрос температуры")
+        auto_frame.grid(row=3, column=0, padx=12, pady=6, sticky="ew")
+        auto_frame.columnconfigure(4, weight=1)
 
-        self.auto_start_button = ttk.Button(auto_frame, text="Start measurement", command=self._start_auto_poll)
+        self.auto_start_button = ttk.Button(auto_frame, text="Начать измерение", command=self._start_auto_poll)
         self.auto_start_button.grid(row=0, column=0, padx=8, pady=8, sticky="ew")
-        self.auto_stop_button = ttk.Button(auto_frame, text="Stop measurement", command=self._stop_auto_poll)
+        self.auto_stop_button = ttk.Button(auto_frame, text="Остановить измерение", command=self._stop_auto_poll)
         self.auto_stop_button.grid(row=0, column=1, padx=8, pady=8, sticky="ew")
         self.auto_stop_button.state(["disabled"])
+        ttk.Label(auto_frame, text="Период").grid(row=0, column=2, padx=(8, 4), pady=8, sticky="w")
+        auto_period_combo = ttk.Combobox(
+            auto_frame,
+            textvariable=self.auto_poll_period_var,
+            values=tuple(AUTO_POLL_PERIOD_OPTIONS),
+            state="readonly",
+            width=8,
+        )
+        auto_period_combo.grid(row=0, column=3, padx=(4, 8), pady=8, sticky="ew")
+        auto_period_combo.bind("<<ComboboxSelected>>", self._apply_auto_poll_period)
         ttk.Label(auto_frame, textvariable=self.auto_poll_status_var, anchor="w").grid(
-            row=0, column=2, padx=8, pady=8, sticky="ew"
+            row=0, column=4, padx=8, pady=8, sticky="ew"
         )
 
         export_frame = ttk.LabelFrame(self, text="Выгрузка в Excel")
-        export_frame.grid(row=5, column=0, padx=12, pady=6, sticky="ew")
+        export_frame.grid(row=4, column=0, padx=12, pady=6, sticky="ew")
         export_frame.columnconfigure(1, weight=1)
         export_frame.columnconfigure(3, weight=1)
 
@@ -1407,6 +1443,28 @@ class ElementCheckerApp(tk.Tk):
             self.status_var.set(f"Не удалось открыть дашборд Grafana: {url}")
             self._append_user_action(f"Grafana dashboard open failed: {url}")
 
+    def _open_all_grafana_dashboards(self) -> None:
+        opened = 0
+        for _title, dashboard_uid in GRAFANA_DASHBOARDS:
+            url = f"{GRAFANA_BASE_URL}/d/{dashboard_uid}?orgId=1&from=now-15m&to=now&refresh=1s"
+            if webbrowser.open_new_tab(url):
+                opened += 1
+                self._append_user_action(f"Grafana dashboard opened: {url}")
+            else:
+                self._append_user_action(f"Grafana dashboard open failed: {url}")
+        self.status_var.set(f"Открыты дашборды Grafana: {opened}")
+
+    def _apply_auto_poll_period(self, _event: object = None) -> None:
+        label = self.auto_poll_period_var.get()
+        self.auto_poll_period_s = AUTO_POLL_PERIOD_OPTIONS.get(label, AUTO_SENSOR_POLL_PERIOD_S)
+        now = time.monotonic()
+        self.auto_poll_next_due = {
+            key: now + self.auto_poll_period_s
+            for key in self.auto_poll_next_due
+        }
+        self.status_var.set(f"Период автоопроса применен: {label}")
+        self._append_user_action(f"Период автоопроса выбран: {label}")
+
     def _sensor_trend(self, device_index: int, channel: int) -> str:
         history = self.temperature_history[device_index][channel - 1]
         if len(history) < 10:
@@ -1416,7 +1474,7 @@ class ElementCheckerApp(tk.Tk):
         last_avg = sum(recent[5:]) / 5
         delta = last_avg - first_avg
         if abs(delta) <= 2.0:
-            return "✕"
+            return "="
         return "↑" if delta > 0 else "↓"
 
     def _sensor_label(self, device_index: int, channel: int, value: str) -> str:
@@ -1430,14 +1488,8 @@ class ElementCheckerApp(tk.Tk):
     def _set_temperature_color(self, device_index: int, channel: int, temperature: float | None) -> None:
         button = self.temperature_buttons[device_index][channel - 1]
         sensor = self.sensor_settings[device_index][channel - 1]
-        color = TEMP_IDLE_COLOR
-        if temperature is not None:
-            if sensor.tmin is not None and temperature < sensor.tmin:
-                color = TEMP_LOW_COLOR
-            elif sensor.tmax is not None and temperature > sensor.tmax:
-                color = TEMP_HIGH_COLOR
-            else:
-                color = TEMP_OK_COLOR
+        color_level = color_level_for_measurement(temperature, temperature is not None, sensor)
+        color = TEMP_LEVEL_COLORS.get(color_level, TEMP_IDLE_COLOR)
         button.configure(bg=color, activebackground=color)
 
     def _apply_sensor_ui_state(self, device_index: int, channel: int) -> None:
@@ -1469,8 +1521,10 @@ class ElementCheckerApp(tk.Tk):
             self.settings_window.focus_set()
             return
 
+        self._restore_settings_snapshot()
+
         window = tk.Toplevel(self)
-        window.title("Settings")
+        window.title("Настройки")
         window.transient(self)
         window.resizable(False, False)
         window.columnconfigure(1, weight=1)
@@ -1478,14 +1532,14 @@ class ElementCheckerApp(tk.Tk):
         window.protocol("WM_DELETE_WINDOW", self._close_settings)
         self.settings_window = window
 
-        port_frame = ttk.LabelFrame(window, text="Port settings")
+        port_frame = ttk.LabelFrame(window, text="Настройки порта")
         port_frame.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="ew")
 
-        ttk.Label(port_frame, text="COM Port").grid(row=0, column=0, padx=8, pady=8, sticky="w")
+        ttk.Label(port_frame, text="COM-порт").grid(row=0, column=0, padx=8, pady=8, sticky="w")
         self.port_combo = ttk.Combobox(port_frame, textvariable=self.port_var, values=self._available_ports(), width=12)
         self.port_combo.grid(row=0, column=1, padx=8, pady=8, sticky="ew")
 
-        ttk.Label(port_frame, text="Baudrate").grid(row=0, column=2, padx=8, pady=8, sticky="w")
+        ttk.Label(port_frame, text="Скорость").grid(row=0, column=2, padx=8, pady=8, sticky="w")
         ttk.Combobox(
             port_frame,
             textvariable=self.baud_var,
@@ -1493,30 +1547,30 @@ class ElementCheckerApp(tk.Tk):
             width=10,
         ).grid(row=0, column=3, padx=8, pady=8, sticky="ew")
 
-        ttk.Label(port_frame, text="Stop bits").grid(row=1, column=0, padx=8, pady=8, sticky="w")
+        ttk.Label(port_frame, text="Стоп-биты").grid(row=1, column=0, padx=8, pady=8, sticky="w")
         ttk.Combobox(port_frame, textvariable=self.stopbits_var, values=("1", "1.5", "2"), width=8).grid(
             row=1, column=1, padx=8, pady=8, sticky="ew"
         )
 
-        ttk.Label(port_frame, text="Scan Rate (ms)").grid(row=1, column=2, padx=8, pady=8, sticky="w")
+        ttk.Label(port_frame, text="Период сканирования, мс").grid(row=1, column=2, padx=8, pady=8, sticky="w")
         ttk.Spinbox(port_frame, from_=50, to=60000, increment=50, textvariable=self.scan_rate_var, width=10).grid(
             row=1, column=3, padx=8, pady=8, sticky="ew"
         )
 
-        device_frame = ttk.LabelFrame(window, text="Device slave addresses")
+        device_frame = ttk.LabelFrame(window, text="Адреса устройств")
         device_frame.grid(row=1, column=0, padx=12, pady=6, sticky="ew")
         for device_index, slave_var in enumerate(self.slave_vars):
-            ttk.Label(device_frame, text=f"Device {device_index + 1}").grid(
+            ttk.Label(device_frame, text=f"Устройство {device_index + 1}").grid(
                 row=0, column=device_index * 2, padx=8, pady=8, sticky="w"
             )
             ttk.Spinbox(device_frame, from_=0, to=247, textvariable=slave_var, width=8).grid(
                 row=0, column=device_index * 2 + 1, padx=8, pady=8, sticky="ew"
             )
 
-        modbus_frame = ttk.LabelFrame(window, text="Manual Modbus request")
+        modbus_frame = ttk.LabelFrame(window, text="Ручной Modbus-запрос")
         modbus_frame.grid(row=2, column=0, padx=12, pady=6, sticky="ew")
 
-        ttk.Label(modbus_frame, text="Device").grid(row=0, column=0, padx=8, pady=8, sticky="w")
+        ttk.Label(modbus_frame, text="Устройство").grid(row=0, column=0, padx=8, pady=8, sticky="w")
         ttk.Combobox(
             modbus_frame,
             textvariable=self.selected_device_var,
@@ -1525,12 +1579,12 @@ class ElementCheckerApp(tk.Tk):
             width=8,
         ).grid(row=0, column=1, padx=8, pady=8, sticky="ew")
 
-        ttk.Label(modbus_frame, text="Function").grid(row=0, column=2, padx=8, pady=8, sticky="w")
+        ttk.Label(modbus_frame, text="Функция").grid(row=0, column=2, padx=8, pady=8, sticky="w")
         function_combo = ttk.Combobox(modbus_frame, textvariable=self.function_var, values=tuple(FUNCTIONS), state="readonly")
         function_combo.grid(row=0, column=3, columnspan=3, padx=8, pady=8, sticky="ew")
         function_combo.bind("<<ComboboxSelected>>", lambda _event: self._refresh_expected())
 
-        ttk.Label(modbus_frame, text="Start Address").grid(row=1, column=0, padx=8, pady=8, sticky="w")
+        ttk.Label(modbus_frame, text="Начальный адрес").grid(row=1, column=0, padx=8, pady=8, sticky="w")
         ttk.Spinbox(modbus_frame, from_=0, to=65535, textvariable=self.start_address_var, width=10).grid(
             row=1, column=1, padx=8, pady=8, sticky="ew"
         )
@@ -1538,27 +1592,27 @@ class ElementCheckerApp(tk.Tk):
         address_base = ttk.Combobox(
             modbus_frame,
             textvariable=self.address_base_var,
-            values=("Dec", "Hex"),
+            values=("Десятичный", "Шестнадцатеричный"),
             state="readonly",
             width=8,
         )
         address_base.grid(row=1, column=2, padx=8, pady=8, sticky="ew")
         address_base.bind("<<ComboboxSelected>>", self._convert_start_address)
 
-        ttk.Label(modbus_frame, text="Quantity").grid(row=1, column=3, padx=8, pady=8, sticky="w")
+        ttk.Label(modbus_frame, text="Количество").grid(row=1, column=3, padx=8, pady=8, sticky="w")
         quantity_spin = ttk.Spinbox(modbus_frame, from_=1, to=65535, textvariable=self.quantity_var, width=10)
         quantity_spin.grid(row=1, column=4, padx=8, pady=8, sticky="ew")
         quantity_spin.configure(command=self._refresh_expected)
 
-        ttk.Label(modbus_frame, text="Expected bytes").grid(row=1, column=5, padx=8, pady=8, sticky="w")
+        ttk.Label(modbus_frame, text="Ожидаемо байт").grid(row=1, column=5, padx=8, pady=8, sticky="w")
         ttk.Entry(modbus_frame, textvariable=self.expected_var, state="readonly", width=8).grid(
             row=1, column=6, padx=8, pady=8, sticky="ew"
         )
 
-        speed_frame = ttk.LabelFrame(window, text="Device baud rate")
+        speed_frame = ttk.LabelFrame(window, text="Скорость устройства")
         speed_frame.grid(row=3, column=0, padx=12, pady=6, sticky="ew")
 
-        ttk.Label(speed_frame, text="Device").grid(row=0, column=0, padx=8, pady=8, sticky="w")
+        ttk.Label(speed_frame, text="Устройство").grid(row=0, column=0, padx=8, pady=8, sticky="w")
         ttk.Combobox(
             speed_frame,
             textvariable=self.device_speed_device_var,
@@ -1567,7 +1621,7 @@ class ElementCheckerApp(tk.Tk):
             width=8,
         ).grid(row=0, column=1, padx=8, pady=8, sticky="ew")
 
-        ttk.Label(speed_frame, text="New baudrate").grid(row=0, column=2, padx=8, pady=8, sticky="w")
+        ttk.Label(speed_frame, text="Новая скорость").grid(row=0, column=2, padx=8, pady=8, sticky="w")
         ttk.Combobox(
             speed_frame,
             textvariable=self.device_speed_var,
@@ -1576,61 +1630,127 @@ class ElementCheckerApp(tk.Tk):
             width=10,
         ).grid(row=0, column=3, padx=8, pady=8, sticky="ew")
 
-        ttk.Button(speed_frame, text="Check current speed", command=self._check_device_speed).grid(
+        ttk.Button(speed_frame, text="Проверить текущую скорость", command=self._check_device_speed).grid(
             row=1, column=0, columnspan=2, padx=8, pady=8, sticky="ew"
         )
-        ttk.Button(speed_frame, text="Set device speed", command=self._set_device_speed).grid(
+        ttk.Button(speed_frame, text="Установить скорость", command=self._set_device_speed).grid(
             row=1, column=2, columnspan=2, padx=8, pady=8, sticky="ew"
         )
         ttk.Label(speed_frame, textvariable=self.device_speed_status_var, anchor="w").grid(
             row=2, column=0, columnspan=4, padx=8, pady=(0, 8), sticky="ew"
         )
 
-        ttk.Button(window, text="Close", command=self._close_settings).grid(row=4, column=0, padx=12, pady=(6, 12), sticky="e")
+        settings_buttons = ttk.Frame(window)
+        settings_buttons.grid(row=4, column=0, padx=12, pady=(6, 12), sticky="e")
+        ttk.Button(settings_buttons, text="Сохранить настройки", command=self._save_settings).grid(
+            row=0, column=0, padx=(0, 8), sticky="e"
+        )
+        ttk.Button(settings_buttons, text="Закрыть", command=self._close_settings).grid(row=0, column=1, sticky="e")
 
     def _close_settings(self) -> None:
+        self._restore_settings_snapshot()
         if self.settings_window is not None:
             self.settings_window.destroy()
             self.settings_window = None
 
+    def _capture_settings_snapshot(self) -> dict[str, object]:
+        return {
+            "port": self.port_var.get(),
+            "baud": self.baud_var.get(),
+            "stopbits": self.stopbits_var.get(),
+            "slaves": [slave_var.get() for slave_var in self.slave_vars],
+            "selected_device": self.selected_device_var.get(),
+            "device_speed_device": self.device_speed_device_var.get(),
+            "device_speed": self.device_speed_var.get(),
+            "scan_rate": self.scan_rate_var.get(),
+            "function": self.function_var.get(),
+            "start_address": self.start_address_var.get(),
+            "address_base": self.address_base_var.get(),
+            "quantity": self.quantity_var.get(),
+        }
+
+    def _restore_settings_snapshot(self) -> None:
+        snapshot = self.applied_settings_snapshot
+        self.port_var.set(str(snapshot["port"]))
+        self.baud_var.set(str(snapshot["baud"]))
+        self.stopbits_var.set(str(snapshot["stopbits"]))
+        for slave_var, value in zip(self.slave_vars, snapshot["slaves"]):
+            slave_var.set(str(value))
+        self.selected_device_var.set(str(snapshot["selected_device"]))
+        self.device_speed_device_var.set(str(snapshot["device_speed_device"]))
+        self.device_speed_var.set(str(snapshot["device_speed"]))
+        self.scan_rate_var.set(str(snapshot["scan_rate"]))
+        self.function_var.set(str(snapshot["function"]))
+        self.start_address_var.set(str(snapshot["start_address"]))
+        self.address_base_var.set(str(snapshot["address_base"]))
+        self.quantity_var.set(str(snapshot["quantity"]))
+        self._refresh_expected()
+
+    def _save_settings(self) -> None:
+        try:
+            settings_by_device = [self._settings(device_index) for device_index in range(DEVICE_COUNT)]
+            function_code = FUNCTIONS[self.function_var.get()]
+            start_address = parse_int(self.start_address_var.get(), self.address_base_var.get())
+            quantity = int(self.quantity_var.get())
+            if not 0 <= start_address <= 65535:
+                raise ValueError("Начальный адрес должен быть в диапазоне 0..65535")
+            if not 1 <= quantity <= 65535:
+                raise ValueError("Количество должно быть в диапазоне 1..65535")
+            expected_response_size(function_code, quantity)
+        except Exception as exc:
+            messagebox.showerror("Ошибка настроек", str(exc), parent=self.settings_window)
+            return
+
+        if self.serial_port is not None and self.serial_port.is_open:
+            first_settings = settings_by_device[0]
+            self.serial_port.baudrate = first_settings.baudrate
+            self.serial_port.stopbits = first_settings.stopbits
+
+        self.applied_settings_snapshot = self._capture_settings_snapshot()
+        self._refresh_expected()
+        self.status_var.set("Настройки применены")
+        self._append_log("Настройки применены")
+        self._append_user_action("Настройки сохранены и применены")
+        messagebox.showinfo("Настройки", "Настройки применены", parent=self.settings_window)
+
     def _selected_speed_device_index(self) -> int:
         device_index = int(self.device_speed_device_var.get()) - 1
         if not 0 <= device_index < DEVICE_COUNT:
-            raise ValueError(f"Device must be 1..{DEVICE_COUNT}")
+            raise ValueError(f"Устройство должно быть в диапазоне 1..{DEVICE_COUNT}")
         return device_index
 
     def _check_device_speed(self) -> None:
         if self.auto_poll_var.get():
-            messagebox.showwarning("Auto polling is running", "Stop measurement before checking device speed.")
+            messagebox.showwarning("Автоопрос выполняется", "Остановите измерение перед проверкой скорости устройства.")
             return
         try:
             device_index = self._selected_speed_device_index()
             settings = self._settings(device_index)
             request = build_request(settings.slave_addr, 0x03, DEVICE_BAUD_REGISTER_ADDRESS, 1)
         except Exception as exc:
-            messagebox.showerror("Speed check error", str(exc))
+            messagebox.showerror("Ошибка проверки скорости", str(exc))
             return
 
-        self.device_speed_status_var.set(f"Checking Elemer {device_index + 1} speed...")
+        self.device_speed_status_var.set(f"Проверка скорости Элемер {device_index + 1}...")
 
         def handle_response(response: bytes, slave_addr=settings.slave_addr, device=device_index) -> None:
             result = validate_read_response(response, slave_addr, 0x03, 2)
             if not result.valid:
-                self.device_speed_status_var.set(f"Elemer {device + 1}: speed check failed - {result.message}")
+                self.device_speed_status_var.set(f"Элемер {device + 1}: проверка скорости не выполнена - {result.message}")
                 return
             code = decode_ushort(result.data)
             rate = DEVICE_BAUD_CODE_TO_RATE.get(code)
             if rate is None:
-                self.device_speed_status_var.set(f"Elemer {device + 1}: unknown speed code {code}")
+                self.device_speed_status_var.set(f"Элемер {device + 1}: неизвестный код скорости {code}")
                 return
             self.device_speed_var.set(str(rate))
-            self.device_speed_status_var.set(f"Elemer {device + 1}: current speed {rate} bit/s, code {code}")
+            self.device_speed_status_var.set(f"Элемер {device + 1}: текущая скорость {rate} бит/с, код {code}")
 
         self._send_request(request, expected_response_size(0x03, 1), handle_response)
 
     def _set_device_speed(self) -> None:
         if self.auto_poll_var.get():
-            messagebox.showwarning("Auto polling is running", "Stop measurement before setting device speed.")
+            messagebox.showwarning("Автоопрос выполняется", "Остановите измерение перед установкой скорости устройства.")
             return
         try:
             device_index = self._selected_speed_device_index()
@@ -1639,31 +1759,31 @@ class ElementCheckerApp(tk.Tk):
             code = DEVICE_BAUD_RATE_TO_CODE[rate]
             request = build_request(settings.slave_addr, 0x06, DEVICE_BAUD_REGISTER_ADDRESS, code)
         except Exception as exc:
-            messagebox.showerror("Speed setup error", str(exc))
+            messagebox.showerror("Ошибка установки скорости", str(exc))
             return
 
         if not messagebox.askyesno(
-            "Set device speed",
-            f"Set Elemer {device_index + 1} baudrate to {rate} bit/s?\n"
-            "After the command the application COM baudrate will also be switched to this value.",
+            "Установка скорости устройства",
+            f"Установить скорость Элемер {device_index + 1} на {rate} бит/с?\n"
+            "После команды скорость COM-порта приложения также будет переключена на это значение.",
             parent=self.settings_window,
         ):
             return
 
-        self.device_speed_status_var.set(f"Setting Elemer {device_index + 1} speed to {rate} bit/s...")
+        self.device_speed_status_var.set(f"Установка скорости Элемер {device_index + 1} на {rate} бит/с...")
 
         def handle_response(response: bytes, device=device_index, new_rate=rate, write_request=request) -> None:
             result = validate_write_single_response(response, write_request)
             if not result.valid:
-                self.device_speed_status_var.set(f"Elemer {device + 1}: speed setup failed - {result.message}")
+                self.device_speed_status_var.set(f"Элемер {device + 1}: установка скорости не выполнена - {result.message}")
                 return
             self.baud_var.set(str(new_rate))
             if self.serial_port is not None and self.serial_port.is_open:
                 self.serial_port.baudrate = new_rate
             self.device_speed_status_var.set(
-                f"Elemer {device + 1}: speed set to {new_rate} bit/s; COM port switched to {new_rate}"
+                f"Элемер {device + 1}: скорость установлена {new_rate} бит/с; COM-порт переключен на {new_rate}"
             )
-            self._append_log(f"Elemer {device + 1}: baudrate set to {new_rate} bit/s")
+            self._append_log(f"Элемер {device + 1}: скорость установлена {new_rate} бит/с")
 
         self._send_request(request, 8, handle_response)
 
@@ -1783,8 +1903,8 @@ class ElementCheckerApp(tk.Tk):
     def _load_channel_settings_json(self) -> None:
         if self.auto_poll_var.get() or self.temperature_poll_running:
             messagebox.showwarning(
-                "JSON settings",
-                "Stop measurement before loading channel settings.",
+                "Настройки JSON",
+                "Остановите измерение перед загрузкой настроек каналов.",
                 parent=self.engineering_window,
             )
             return
@@ -1793,34 +1913,34 @@ class ElementCheckerApp(tk.Tk):
             parent=self.engineering_window,
             title="Загрузить настройки каналов из JSON",
             initialdir=str(self.channel_settings_path.parent),
-            filetypes=(("JSON files", "*.json"), ("All files", "*.*")),
+            filetypes=(("Файлы JSON", "*.json"), ("Все файлы", "*.*")),
         )
         if not filename:
-            self._append_user_action("JSON load canceled")
+            self._append_user_action("Загрузка JSON отменена")
             return
 
         path = Path(filename)
-        self._append_user_action(f"JSON load selected: {path}")
+        self._append_user_action(f"Выбран JSON для загрузки: {path}")
         warning = load_channel_settings(path, self.sensor_settings)
         if warning:
-            self._append_user_action(f"JSON load failed: {path}: {warning}")
-            messagebox.showerror("JSON load error", warning, parent=self.engineering_window)
+            self._append_user_action(f"Ошибка загрузки JSON: {path}: {warning}")
+            messagebox.showerror("Ошибка загрузки JSON", warning, parent=self.engineering_window)
             return
 
         try:
             save_channel_settings(self.channel_settings_path, self.sensor_settings)
         except Exception as exc:
-            self._append_user_action(f"JSON load failed while saving working settings: {exc}")
-            messagebox.showerror("JSON save error", str(exc), parent=self.engineering_window)
+            self._append_user_action(f"Ошибка загрузки JSON при сохранении рабочих настроек: {exc}")
+            messagebox.showerror("Ошибка сохранения JSON", str(exc), parent=self.engineering_window)
             return
 
         self.auto_poll_next_due = {}
         self._refresh_all_channel_ui()
-        message = f"Channel settings loaded from JSON: {path}"
+        message = f"Настройки каналов загружены из JSON: {path}"
         self.status_var.set(message)
         self._append_log(message)
         self._append_user_action(message)
-        messagebox.showinfo("JSON settings", f"Настройки загружены:\n{path}", parent=self.engineering_window)
+        messagebox.showinfo("Настройки JSON", f"Настройки загружены:\n{path}", parent=self.engineering_window)
 
     def _save_channel_settings_json_as(self) -> None:
         filename = filedialog.asksaveasfilename(
@@ -1829,32 +1949,32 @@ class ElementCheckerApp(tk.Tk):
             initialdir=str(self.channel_settings_path.parent),
             initialfile=CHANNEL_SETTINGS_FILE,
             defaultextension=".json",
-            filetypes=(("JSON files", "*.json"), ("All files", "*.*")),
+            filetypes=(("Файлы JSON", "*.json"), ("Все файлы", "*.*")),
         )
         if not filename:
-            self._append_user_action("JSON save as canceled")
+            self._append_user_action("Сохранение JSON отменено")
             return
 
         path = Path(filename)
-        self._append_user_action(f"JSON save as selected: {path}")
+        self._append_user_action(f"Выбран JSON для сохранения: {path}")
         try:
             save_channel_settings(path, self.sensor_settings)
         except Exception as exc:
-            self._append_user_action(f"JSON save failed: {path}: {exc}")
-            messagebox.showerror("JSON save error", str(exc), parent=self.engineering_window)
+            self._append_user_action(f"Ошибка сохранения JSON: {path}: {exc}")
+            messagebox.showerror("Ошибка сохранения JSON", str(exc), parent=self.engineering_window)
             return
 
-        message = f"Channel settings saved to JSON: {path}"
+        message = f"Настройки каналов сохранены в JSON: {path}"
         self.status_var.set(message)
         self._append_log(message)
         self._append_user_action(message)
-        messagebox.showinfo("JSON settings", f"Настройки сохранены:\n{path}", parent=self.engineering_window)
+        messagebox.showinfo("Настройки JSON", f"Настройки сохранены:\n{path}", parent=self.engineering_window)
 
     def _load_channel_settings_excel(self) -> None:
         if self.auto_poll_var.get() or self.temperature_poll_running:
             messagebox.showwarning(
-                "Excel settings",
-                "Stop measurement before loading channel settings.",
+                "Настройки Excel",
+                "Остановите измерение перед загрузкой настроек каналов.",
                 parent=self.engineering_window,
             )
             return
@@ -1863,34 +1983,34 @@ class ElementCheckerApp(tk.Tk):
             parent=self.engineering_window,
             title="Загрузить настройки каналов из Excel",
             initialdir=str(self.channel_settings_path.parent),
-            filetypes=(("Excel files", "*.xlsx"), ("All files", "*.*")),
+            filetypes=(("Файлы Excel", "*.xlsx"), ("Все файлы", "*.*")),
         )
         if not filename:
-            self._append_user_action("Excel settings load canceled")
+            self._append_user_action("Загрузка Excel отменена")
             return
 
         path = Path(filename)
-        self._append_user_action(f"Excel settings load selected: {path}")
+        self._append_user_action(f"Выбран Excel для загрузки: {path}")
         warning = load_channel_settings_excel(path, self.sensor_settings)
         if warning:
-            self._append_user_action(f"Excel settings load failed: {path}: {warning}")
-            messagebox.showerror("Excel load error", warning, parent=self.engineering_window)
+            self._append_user_action(f"Ошибка загрузки Excel: {path}: {warning}")
+            messagebox.showerror("Ошибка загрузки Excel", warning, parent=self.engineering_window)
             return
 
         try:
             save_channel_settings(self.channel_settings_path, self.sensor_settings)
         except Exception as exc:
-            self._append_user_action(f"Excel settings load failed while saving working JSON: {exc}")
-            messagebox.showerror("JSON save error", str(exc), parent=self.engineering_window)
+            self._append_user_action(f"Ошибка загрузки Excel при сохранении рабочего JSON: {exc}")
+            messagebox.showerror("Ошибка сохранения JSON", str(exc), parent=self.engineering_window)
             return
 
         self.auto_poll_next_due = {}
         self._refresh_all_channel_ui()
-        message = f"Channel settings loaded from Excel and saved to JSON: {path}"
+        message = f"Настройки каналов загружены из Excel и сохранены в JSON: {path}"
         self.status_var.set(message)
         self._append_log(message)
         self._append_user_action(message)
-        messagebox.showinfo("Excel settings", f"Настройки загружены из Excel и сохранены в JSON:\n{path}", parent=self.engineering_window)
+        messagebox.showinfo("Настройки Excel", f"Настройки загружены из Excel и сохранены в JSON:\n{path}", parent=self.engineering_window)
 
     def _save_channel_settings_excel_as(self) -> None:
         filename = filedialog.asksaveasfilename(
@@ -1899,26 +2019,26 @@ class ElementCheckerApp(tk.Tk):
             initialdir=str(self.channel_settings_path.parent),
             initialfile="channel_settings.xlsx",
             defaultextension=".xlsx",
-            filetypes=(("Excel files", "*.xlsx"), ("All files", "*.*")),
+            filetypes=(("Файлы Excel", "*.xlsx"), ("Все файлы", "*.*")),
         )
         if not filename:
-            self._append_user_action("Excel settings save as canceled")
+            self._append_user_action("Сохранение Excel отменено")
             return
 
         path = Path(filename)
-        self._append_user_action(f"Excel settings save as selected: {path}")
+        self._append_user_action(f"Выбран Excel для сохранения: {path}")
         try:
             save_channel_settings_excel(path, self.sensor_settings)
         except Exception as exc:
-            self._append_user_action(f"Excel settings save failed: {path}: {exc}")
-            messagebox.showerror("Excel save error", str(exc), parent=self.engineering_window)
+            self._append_user_action(f"Ошибка сохранения Excel: {path}: {exc}")
+            messagebox.showerror("Ошибка сохранения Excel", str(exc), parent=self.engineering_window)
             return
 
-        message = f"Channel settings saved to Excel: {path}"
+        message = f"Настройки каналов сохранены в Excel: {path}"
         self.status_var.set(message)
         self._append_log(message)
         self._append_user_action(message)
-        messagebox.showinfo("Excel settings", f"Настройки сохранены в Excel:\n{path}", parent=self.engineering_window)
+        messagebox.showinfo("Настройки Excel", f"Настройки сохранены в Excel:\n{path}", parent=self.engineering_window)
 
     def _close_engineering_window(self) -> None:
         if self.engineering_window is not None:
@@ -2060,19 +2180,19 @@ class ElementCheckerApp(tk.Tk):
             calibration_b = float(self.engineering_vars["calibration_b"].get().replace(",", "."))
             emissivity = float(self.engineering_vars["emissivity"].get().replace(",", "."))
             if not 0 < emissivity <= 1:
-                raise ValueError("Emissivity must be greater than 0 and not greater than 1")
+                raise ValueError("Степень черноты должна быть больше 0 и не больше 1")
             tmin = parse_limit("tmin")
             tmax = parse_limit("tmax")
             twar = parse_limit("twar")
             tcrit = parse_limit("tcrit")
             temerg = parse_limit("temerg")
         except Exception as exc:
-            messagebox.showerror("Channel settings error", str(exc))
+            messagebox.showerror("Ошибка настроек канала", str(exc))
             return
 
         if not messagebox.askyesno(
-            "Save confirmation",
-            "Save channel settings?",
+            "Подтверждение сохранения",
+            "Сохранить настройки канала?",
             parent=self.engineering_window,
         ):
             return
@@ -2092,7 +2212,7 @@ class ElementCheckerApp(tk.Tk):
         try:
             save_channel_settings(self.channel_settings_path, self.sensor_settings)
         except Exception as exc:
-            messagebox.showerror("JSON save error", str(exc))
+            messagebox.showerror("Ошибка сохранения JSON", str(exc))
             return
 
         self._apply_sensor_ui_state(device_index, channel)
@@ -2102,9 +2222,9 @@ class ElementCheckerApp(tk.Tk):
                 self.auto_poll_next_due[key] = time.monotonic()
             else:
                 self.auto_poll_next_due.pop(key, None)
-        self.status_var.set(f"Channel saved: Elemer {device_index + 1}, channel {channel}")
-        self._append_log(f"Engineering settings saved for Elemer {device_index + 1}, channel {channel}")
-        self._append_user_action(f"Channel settings saved: Elemer {device_index + 1}, channel {channel}")
+        self.status_var.set(f"Канал сохранен: Элемер {device_index + 1}, канал {channel}")
+        self._append_log(f"Инженерные настройки сохранены: Элемер {device_index + 1}, канал {channel}")
+        self._append_user_action(f"Настройки канала сохранены: Элемер {device_index + 1}, канал {channel}")
 
     def _open_logs_window(self) -> None:
         if self.logs_window is not None and self.logs_window.winfo_exists():
@@ -2113,7 +2233,7 @@ class ElementCheckerApp(tk.Tk):
             return
 
         window = tk.Toplevel(self)
-        window.title("Logs")
+        window.title("Журнал")
         window.geometry("900x420")
         window.protocol("WM_DELETE_WINDOW", self._close_logs_window)
         window.columnconfigure(0, weight=1)
@@ -2147,7 +2267,7 @@ class ElementCheckerApp(tk.Tk):
             return
 
         window = tk.Toplevel(self)
-        window.title("User actions")
+        window.title("Действия пользователя")
         window.geometry("900x420")
         window.protocol("WM_DELETE_WINDOW", self._close_user_actions_window)
         window.columnconfigure(0, weight=1)
@@ -2185,15 +2305,15 @@ class ElementCheckerApp(tk.Tk):
     def _selected_device_index(self) -> int:
         device_index = int(self.selected_device_var.get()) - 1
         if not 0 <= device_index < DEVICE_COUNT:
-            raise ValueError(f"Device must be 1..{DEVICE_COUNT}")
+            raise ValueError(f"Устройство должно быть в диапазоне 1..{DEVICE_COUNT}")
         return device_index
 
     def _slave_addr(self, device_index: int) -> int:
         if not 0 <= device_index < DEVICE_COUNT:
-            raise ValueError(f"Device must be 1..{DEVICE_COUNT}")
+            raise ValueError(f"Устройство должно быть в диапазоне 1..{DEVICE_COUNT}")
         slave_addr = int(self.slave_vars[device_index].get())
         if not 0 <= slave_addr <= 247:
-            raise ValueError("Slave address must be 0..247")
+            raise ValueError("Адрес устройства должен быть в диапазоне 0..247")
         return slave_addr
 
     def _settings(self, device_index: int | None = None) -> PortSettings:
@@ -2215,7 +2335,7 @@ class ElementCheckerApp(tk.Tk):
 
     def _connect(self) -> None:
         if serial is None:
-            messagebox.showerror("pyserial is not installed", "Install dependency first:\npython -m pip install pyserial")
+            messagebox.showerror("pyserial не установлен", "Сначала установите зависимость:\npython -m pip install pyserial")
             return
 
         try:
@@ -2230,13 +2350,13 @@ class ElementCheckerApp(tk.Tk):
                 write_timeout=1,
             )
         except Exception as exc:
-            messagebox.showerror("Connection error", str(exc))
-            self.status_var.set("Port disconnected")
+            messagebox.showerror("Ошибка подключения", str(exc))
+            self.status_var.set("Порт отключен")
             return
 
-        self.connect_button.configure(text="Disconnect port")
-        self.status_var.set(f"Connected: {settings.port}, {settings.baudrate}, {settings.stopbits:g} stop bits")
-        self._append_log("Port connected")
+        self.connect_button.configure(text="Отключить порт")
+        self.status_var.set(f"Подключено: {settings.port}, {settings.baudrate}, стоп-биты {settings.stopbits:g}")
+        self._append_log("Порт подключен")
 
     def _disconnect(self) -> None:
         self._stop_auto_poll(export_session=False)
@@ -2245,9 +2365,9 @@ class ElementCheckerApp(tk.Tk):
                 self.serial_port.close()
             except Exception:
                 pass
-        self.connect_button.configure(text="Connect port")
-        self.status_var.set("Port disconnected")
-        self._append_log("Port disconnected")
+        self.connect_button.configure(text="Подключить порт")
+        self.status_var.set("Порт отключен")
+        self._append_log("Порт отключен")
 
     def _send_manual_request(self) -> None:
         try:
@@ -2259,7 +2379,7 @@ class ElementCheckerApp(tk.Tk):
             request = build_request(settings.slave_addr, function_code, start_address, quantity)
             expected_size = expected_response_size(function_code, quantity)
         except Exception as exc:
-            messagebox.showerror("Request settings error", str(exc))
+            messagebox.showerror("Ошибка настроек запроса", str(exc))
             return
 
         self._send_request(
@@ -2270,7 +2390,7 @@ class ElementCheckerApp(tk.Tk):
 
     def _request_temperature(self, device_index: int, channel: int) -> None:
         if not 1 <= channel <= TELEMETRY_CHANNELS:
-            messagebox.showerror("Telemetry error", f"Sensor channel must be 1..{TELEMETRY_CHANNELS}")
+            messagebox.showerror("Ошибка телеметрии", f"Канал датчика должен быть в диапазоне 1..{TELEMETRY_CHANNELS}")
             return
         if not self.sensor_settings[device_index][channel - 1].used:
             return
@@ -2280,10 +2400,10 @@ class ElementCheckerApp(tk.Tk):
             address = TELEMETRY_WITH_ERRORS_BASE_ADDRESS + (channel - 1) * TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL
             request = build_request(settings.slave_addr, 0x03, address, TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL)
         except Exception as exc:
-            messagebox.showerror("Telemetry settings error", str(exc))
+            messagebox.showerror("Ошибка настроек телеметрии", str(exc))
             return
 
-        self._set_temperature_label(device_index, channel, "reading")
+        self._set_temperature_label(device_index, channel, "чтение")
 
         def worker() -> None:
             try:
@@ -2296,8 +2416,8 @@ class ElementCheckerApp(tk.Tk):
                     )
                 )
             except Exception as exc:
-                self.ui_queue.put(("temp", f"{device_index}|{channel}|error"))
-                self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: Error: {exc}"))
+                self.ui_queue.put(("temp", f"{device_index}|{channel}|ошибка"))
+                self.ui_queue.put(("log", f"Устройство {device_index + 1}, датчик {channel}: ошибка: {exc}"))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -2306,13 +2426,13 @@ class ElementCheckerApp(tk.Tk):
             return False
         if self.temperature_poll_running:
             if not auto:
-                self.status_var.set("Temperature polling is already running")
+                self.status_var.set("Опрос температуры уже выполняется")
             return False
 
         try:
             settings_by_device = [self._settings(device_index) for device_index in range(DEVICE_COUNT)]
         except Exception as exc:
-            messagebox.showerror("Telemetry settings error", str(exc))
+            messagebox.showerror("Ошибка настроек телеметрии", str(exc))
             return False
 
         self.temperature_poll_running = True
@@ -2352,7 +2472,7 @@ class ElementCheckerApp(tk.Tk):
                     self.auto_poll_next_due[key] = now
                 if now >= self.auto_poll_next_due[key]:
                     due_channels.append(key)
-                    self.auto_poll_next_due[key] = now + AUTO_SENSOR_POLL_PERIOD_S
+                    self.auto_poll_next_due[key] = now + self.auto_poll_period_s
 
         if not due_channels:
             return False
@@ -2360,7 +2480,7 @@ class ElementCheckerApp(tk.Tk):
         try:
             settings_by_device = [self._settings(device_index) for device_index in range(DEVICE_COUNT)]
         except Exception as exc:
-            messagebox.showerror("Telemetry settings error", str(exc))
+            messagebox.showerror("Ошибка настроек телеметрии", str(exc))
             return False
 
         self.temperature_poll_running = True
@@ -2382,7 +2502,7 @@ class ElementCheckerApp(tk.Tk):
         if not channels:
             return
         for channel in channels:
-            self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
+            self.ui_queue.put(("temp", f"{device_index}|{channel}|чтение"))
 
         sensor_type_codes = self._read_sensor_types_block_for_worker(settings, device_index)
         try:
@@ -2394,7 +2514,7 @@ class ElementCheckerApp(tk.Tk):
             )
             result = validate_read_response(response, settings.slave_addr, 0x03, TELEMETRY_CHANNELS * TELEMETRY_WITH_ERRORS_REGISTERS_PER_CHANNEL * 2)
             if not result.valid:
-                self.ui_queue.put(("log", f"Device {device_index + 1}: telemetry block read failed - {result.message}"))
+                self.ui_queue.put(("log", f"Устройство {device_index + 1}: не удалось прочитать блок телеметрии - {result.message}"))
                 for channel in channels:
                     self._poll_channel_individual_for_worker(settings, device_index, channel)
                 return
@@ -2411,7 +2531,7 @@ class ElementCheckerApp(tk.Tk):
                     )
                 )
         except Exception as exc:
-            self.ui_queue.put(("log", f"Device {device_index + 1}: telemetry block error - {exc}"))
+            self.ui_queue.put(("log", f"Устройство {device_index + 1}: ошибка чтения блока телеметрии - {exc}"))
             for channel in channels:
                 self._poll_channel_individual_for_worker(settings, device_index, channel)
 
@@ -2430,8 +2550,8 @@ class ElementCheckerApp(tk.Tk):
                 )
             )
         except Exception as exc:
-            self.ui_queue.put(("temp", f"{device_index}|{channel}|error"))
-            self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: Error: {exc}"))
+            self.ui_queue.put(("temp", f"{device_index}|{channel}|ошибка"))
+            self.ui_queue.put(("log", f"Устройство {device_index + 1}, датчик {channel}: ошибка: {exc}"))
 
     def _read_sensor_types_block_for_worker(self, settings: PortSettings, device_index: int) -> list[int | None]:
         if all(value is not None for value in self.sensor_type_cache[device_index]):
@@ -2441,7 +2561,7 @@ class ElementCheckerApp(tk.Tk):
         response = self._transact(request, expected_response_size(0x03, TELEMETRY_CHANNELS), log_transaction=False)
         result = validate_read_response(response, settings.slave_addr, 0x03, TELEMETRY_CHANNELS * 2)
         if not result.valid:
-            self.ui_queue.put(("log", f"Device {device_index + 1}: sensor type block read failed - {result.message}"))
+            self.ui_queue.put(("log", f"Устройство {device_index + 1}: не удалось прочитать блок типов датчиков - {result.message}"))
             return self.sensor_type_cache[device_index]
 
         for channel in range(1, TELEMETRY_CHANNELS + 1):
@@ -2465,7 +2585,7 @@ class ElementCheckerApp(tk.Tk):
         response = self._transact(request, 7, log_transaction=log_transaction)
         result = validate_read_response(response, settings.slave_addr, 0x03, 2)
         if not result.valid:
-            self.ui_queue.put(("log", f"Device {device_index + 1}, sensor {channel}: sensor type read failed - {result.message}"))
+            self.ui_queue.put(("log", f"Устройство {device_index + 1}, датчик {channel}: не удалось прочитать тип датчика - {result.message}"))
             return None
 
         sensor_type_code = decode_ushort(result.data)
@@ -2485,15 +2605,15 @@ class ElementCheckerApp(tk.Tk):
                 self.ui_queue.put(("callback", f"{id(callback)}|{response.hex()}"))
             except Exception as exc:
                 self._pending_callbacks.pop(id(callback), None)
-                self.ui_queue.put(("log", f"Error: {exc}"))
-                self.ui_queue.put(("status", "Request error"))
+                self.ui_queue.put(("log", f"Ошибка: {exc}"))
+                self.ui_queue.put(("status", "Ошибка запроса"))
 
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
 
     def _transact(self, request: bytes, expected_size: int, log_transaction: bool = True) -> bytes:
         if not self.worker_lock.acquire(blocking=False):
-            raise RuntimeError("Request is already running")
+            raise RuntimeError("Запрос уже выполняется")
         try:
             assert self.serial_port is not None
             self.serial_port.reset_input_buffer()
@@ -2502,7 +2622,7 @@ class ElementCheckerApp(tk.Tk):
             response = self.serial_port.read(expected_size or 256)
             if log_transaction:
                 self.ui_queue.put(("log", f"TX: {format_hex(request)}"))
-                self.ui_queue.put(("log", f"RX: {format_hex(response) if response else '<timeout/no data>'}"))
+                self.ui_queue.put(("log", f"RX: {format_hex(response) if response else '<таймаут/нет данных>'}"))
             return response
         finally:
             self.worker_lock.release()
@@ -2514,11 +2634,11 @@ class ElementCheckerApp(tk.Tk):
             expected_data_len = math.ceil(quantity / 8) if function_code in {0x01, 0x02} else quantity * 2
             result = validate_read_response(response, slave_addr, function_code, expected_data_len)
         except Exception as exc:
-            self.status_var.set(f"Validation error: {exc}")
+            self.status_var.set(f"Ошибка проверки ответа: {exc}")
             return
 
-        self.status_var.set("Manual response valid" if result.valid else f"Manual response invalid: {result.message}")
-        self._append_log(f"Check: {result.message}")
+        self.status_var.set("Ручной ответ корректен" if result.valid else f"Ручной ответ некорректен: {result.message}")
+        self._append_log(f"Проверка: {result.message}")
 
     def _handle_temperature_response(
         self,
@@ -2531,7 +2651,7 @@ class ElementCheckerApp(tk.Tk):
         timestamp = datetime.now(timezone.utc)
         sensor = self.sensor_settings[device_index][channel - 1]
         raw_response = format_hex(response) if response else ""
-        sensor_type_text = SENSOR_TYPE_TEXT.get(sensor_type_code, "Unknown" if sensor_type_code is not None else "")
+        sensor_type_text = SENSOR_TYPE_TEXT.get(sensor_type_code, "Неизвестно" if sensor_type_code is not None else "")
 
         def save_db(
             temperature: float | None,
@@ -2566,7 +2686,7 @@ class ElementCheckerApp(tk.Tk):
                     raw_temperature=raw_temperature,
                     temperature=temperature,
                     error_code=error_code,
-                    error_text=MEASUREMENT_ERROR_TEXT.get(error_code, "Unknown" if error_code is not None else ""),
+                    error_text=MEASUREMENT_ERROR_TEXT.get(error_code, "Неизвестно" if error_code is not None else ""),
                     timer_code=timer_code,
                     sensor_type_code=sensor_type_code,
                     sensor_type_text=sensor_type_text,
@@ -2579,10 +2699,10 @@ class ElementCheckerApp(tk.Tk):
         try:
             result = validate_read_response(response, slave_addr, 0x03, 8)
             if not result.valid:
-                self._set_temperature_label(device_index, channel, "invalid")
+                self._set_temperature_label(device_index, channel, "некорр.")
                 self._set_temperature_color(device_index, channel, None)
-                self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {result.message}")
-                self._append_log(f"Device {device_index + 1}, sensor {channel}: invalid response - {result.message}")
+                self.status_var.set(f"Устройство {device_index + 1}, датчик {channel}: {result.message}")
+                self._append_log(f"Устройство {device_index + 1}, датчик {channel}: некорректный ответ - {result.message}")
                 save_db(None, None, None, None, False, result.message)
                 return
 
@@ -2597,23 +2717,23 @@ class ElementCheckerApp(tk.Tk):
             del history[:-10]
 
             if measurement_valid:
-                unit = "W/m²" if sensor_kind_code(sensor.sensor_type) == SENSOR_KIND_HEAT_FLUX else "C"
+                unit = "Вт/м²" if sensor_kind_code(sensor.sensor_type) == SENSOR_KIND_HEAT_FLUX else "°C"
                 self._set_temperature_label(device_index, channel, f"{temperature:.1f} {unit}")
                 self._set_temperature_color(device_index, channel, temperature)
-                self.status_var.set(f"Device {device_index + 1}, sensor {channel}: {temperature:.2f} {unit}")
+                self.status_var.set(f"Устройство {device_index + 1}, датчик {channel}: {temperature:.2f} {unit}")
                 self._append_log(
-                    f"Device {device_index + 1}, sensor {channel}: valid, value = {temperature:.3f} {unit}, "
-                    f"raw = {raw_temperature:.3f} C, "
-                    f"sensor type = {sensor_type_code if sensor_type_code is not None else 'unknown'} {sensor_type_text}".rstrip()
+                    f"Устройство {device_index + 1}, датчик {channel}: корректно, значение = {temperature:.3f} {unit}, "
+                    f"сырое значение = {raw_temperature:.3f} °C, "
+                    f"тип датчика = {sensor_type_code if sensor_type_code is not None else 'неизвестно'} {sensor_type_text}".rstrip()
                 )
             else:
-                error_text = MEASUREMENT_ERROR_TEXT.get(error_code, "Unknown")
-                self._set_temperature_label(device_index, channel, f"err {error_code}")
+                error_text = MEASUREMENT_ERROR_TEXT.get(error_code, "Неизвестно")
+                self._set_temperature_label(device_index, channel, f"ош {error_code}")
                 self._set_temperature_color(device_index, channel, None)
-                self.status_var.set(f"Device {device_index + 1}, sensor {channel}: measurement error {error_code}")
+                self.status_var.set(f"Устройство {device_index + 1}, датчик {channel}: ошибка измерения {error_code}")
                 self._append_log(
-                    f"Device {device_index + 1}, sensor {channel}: measurement error {error_code} ({error_text}), "
-                    f"temperature payload = {raw_temperature:.3f} C"
+                    f"Устройство {device_index + 1}, датчик {channel}: ошибка измерения {error_code} ({error_text}), "
+                    f"поле температуры = {raw_temperature:.3f} °C"
                 )
 
             save_db(
@@ -2622,18 +2742,18 @@ class ElementCheckerApp(tk.Tk):
                 error_code,
                 timer_code,
                 measurement_valid,
-                "valid" if measurement_valid else f"measurement error {error_code}",
+                "корректно" if measurement_valid else f"ошибка измерения {error_code}",
             )
         except Exception as exc:
-            self._set_temperature_label(device_index, channel, "error")
+            self._set_temperature_label(device_index, channel, "ошибка")
             self._set_temperature_color(device_index, channel, None)
-            self.status_var.set(f"Device {device_index + 1}, sensor {channel}: decode error")
-            self._append_log(f"Device {device_index + 1}, sensor {channel}: decode error - {exc}")
-            save_db(None, None, None, None, False, f"decode error: {exc}")
+            self.status_var.set(f"Устройство {device_index + 1}, датчик {channel}: ошибка декодирования")
+            self._append_log(f"Устройство {device_index + 1}, датчик {channel}: ошибка декодирования - {exc}")
+            save_db(None, None, None, None, False, f"ошибка декодирования: {exc}")
 
     def _ensure_connected(self) -> bool:
         if not self.serial_port or not self.serial_port.is_open:
-            messagebox.showwarning("Port is not connected", "Connect the COM port first.")
+            messagebox.showwarning("Порт не подключен", "Сначала подключите COM-порт.")
             return False
         return True
 
@@ -2648,12 +2768,12 @@ class ElementCheckerApp(tk.Tk):
 
     def _convert_start_address(self, _event: object = None) -> None:
         try:
-            current_base = "Hex" if self.address_base_var.get() == "Dec" else "Dec"
+            current_base = "Шестнадцатеричный" if self.address_base_var.get() == "Десятичный" else "Десятичный"
             value = parse_int(self.start_address_var.get(), current_base)
         except ValueError:
             return
 
-        if self.address_base_var.get() == "Hex":
+        if self.address_base_var.get() in {"Hex", "Шестнадцатеричный"}:
             self.start_address_var.set(f"{value:X}")
         else:
             self.start_address_var.set(str(value))
@@ -2672,7 +2792,7 @@ class ElementCheckerApp(tk.Tk):
                 return datetime.strptime(value, fmt).astimezone()
             except ValueError:
                 pass
-        raise ValueError("Use date format dd.mm.yy HH:MM")
+        raise ValueError("Используйте формат даты дд.мм.гг ЧЧ:ММ")
 
     def _selected_export_range(self) -> tuple[datetime, datetime, str]:
         now = datetime.now().astimezone()
@@ -2686,14 +2806,14 @@ class ElementCheckerApp(tk.Tk):
         start = self._parse_export_datetime(self.export_start_var.get())
         end = self._parse_export_datetime(self.export_end_var.get())
         if end <= start:
-            raise ValueError("End time must be later than start time")
+            raise ValueError("Время окончания должно быть позже времени начала")
         return start, end, "custom"
 
     def _export_selected_period(self) -> None:
         try:
             start, end, label = self._selected_export_range()
         except Exception as exc:
-            messagebox.showerror("Export period error", str(exc))
+            messagebox.showerror("Ошибка периода выгрузки", str(exc))
             return
         self._export_measurements_async(start, end, label)
 
@@ -2706,12 +2826,12 @@ class ElementCheckerApp(tk.Tk):
     ) -> None:
         if not self.db_writer.enabled:
             if show_message:
-                messagebox.showerror("Export error", self.db_writer.disabled_reason or "Database driver is not installed")
+                messagebox.showerror("Ошибка выгрузки", self.db_writer.disabled_reason or "Драйвер базы данных не установлен")
             else:
-                self._append_log(self.db_writer.disabled_reason or "Database driver is not installed")
+                self._append_log(self.db_writer.disabled_reason or "Драйвер базы данных не установлен")
             return
         if show_message:
-            self.export_status_var.set("Exporting data to Excel...")
+            self.export_status_var.set("Выгрузка данных в Excel...")
 
         def worker() -> None:
             try:
@@ -2793,7 +2913,7 @@ class ElementCheckerApp(tk.Tk):
         elif psycopg2 is not None:
             connection = psycopg2.connect(**self.db_writer.connection_kwargs)
         else:
-            raise RuntimeError("PostgreSQL driver is not installed")
+            raise RuntimeError("Драйвер PostgreSQL не установлен")
 
         try:
             with connection.cursor() as cursor:
@@ -2819,12 +2939,12 @@ class ElementCheckerApp(tk.Tk):
             valid = bool(record.get("valid"))
             row_map = {
                 **record,
-                "device_label": f"Elemer {device_index}" if device_index else "",
+                "device_label": f"Элемер {device_index}" if device_index else "",
                 "sensor_num": sensor.num if sensor is not None else "",
                 "sensor_name": sensor.name if sensor is not None else "",
-                "measurement_error_text": MEASUREMENT_ERROR_TEXT.get(error_code, "Unknown" if error_code is not None else ""),
-                "sensor_type_text": SENSOR_TYPE_TEXT.get(sensor_type_code, "Unknown" if sensor_type_code is not None else ""),
-                "validation_message": "valid" if valid else (f"measurement error {error_code}" if error_code is not None else ""),
+                "measurement_error_text": MEASUREMENT_ERROR_TEXT.get(error_code, "Неизвестно" if error_code is not None else ""),
+                "sensor_type_text": SENSOR_TYPE_TEXT.get(sensor_type_code, "Неизвестно" if sensor_type_code is not None else ""),
+                "validation_message": "корректно" if valid else (f"ошибка измерения {error_code}" if error_code is not None else ""),
                 "raw_response": "",
             }
             rows.append(tuple(row_map.get(column) for column in export_columns))
@@ -2854,7 +2974,7 @@ class ElementCheckerApp(tk.Tk):
         }
         self.auto_start_button.state(["disabled"])
         self.auto_stop_button.state(["!disabled"])
-        self.auto_poll_status_var.set("Auto poll running")
+        self.auto_poll_status_var.set("Автоопрос выполняется")
         self._schedule_auto_poll(0)
 
     def _stop_auto_poll(self, export_session: bool = True) -> None:
@@ -2866,11 +2986,11 @@ class ElementCheckerApp(tk.Tk):
             self.auto_start_button.state(["!disabled"])
         if hasattr(self, "auto_stop_button"):
             self.auto_stop_button.state(["disabled"])
-        self.auto_poll_status_var.set("Auto poll stopped")
+        self.auto_poll_status_var.set("Автоопрос остановлен")
         if export_session and was_running and self.measurement_export_from is not None:
             if self.temperature_poll_running:
                 self.pending_stop_export = True
-                self.export_status_var.set("Waiting for the current poll to finish before export...")
+                self.export_status_var.set("Ожидание завершения текущего опроса перед выгрузкой...")
             else:
                 self._export_session_until(datetime.now(timezone.utc), include_partial=True)
                 self._clear_measurement_export_state()
@@ -2910,7 +3030,7 @@ class ElementCheckerApp(tk.Tk):
             if not self.serial_port or not self.serial_port.is_open:
                 self._stop_auto_poll()
                 return
-            self.auto_poll_status_var.set("Polling...")
+            self.auto_poll_status_var.set("Опрос...")
             started = self._request_due_temperatures()
             if not started:
                 self._schedule_auto_poll()
@@ -2940,7 +3060,7 @@ class ElementCheckerApp(tk.Tk):
                 log_file.write(line + "\n")
                 log_file.flush()
         except Exception as exc:
-            self._append_log(f"User action log write error: {exc}")
+            self._append_log(f"Ошибка записи журнала действий пользователя: {exc}")
         if self.user_actions_text is not None and self.user_actions_text.winfo_exists():
             self.user_actions_text.insert("end", line + "\n")
             self.user_actions_text.see("end")
@@ -2969,7 +3089,7 @@ class ElementCheckerApp(tk.Tk):
         except Exception:
             window_title = ""
         suffix = f" ({window_title})" if window_title else ""
-        self._append_user_action(f"Button clicked: {text}{suffix}")
+        self._append_user_action(f"Нажата кнопка: {text}{suffix}")
 
     def _drain_ui_queue(self) -> None:
         while True:
@@ -2998,10 +3118,10 @@ class ElementCheckerApp(tk.Tk):
                 self.temperature_poll_running = False
                 if value == "auto" and self.auto_poll_var.get():
                     self._export_session_until(datetime.now(timezone.utc), include_partial=False)
-                    self.auto_poll_status_var.set("Auto poll running")
+                    self.auto_poll_status_var.set("Автоопрос выполняется")
                     self._schedule_auto_poll()
                 elif value == "auto":
-                    self.auto_poll_status_var.set("Auto poll stopped")
+                    self.auto_poll_status_var.set("Автоопрос остановлен")
                     if self.pending_stop_export:
                         self.pending_stop_export = False
                         end = datetime.now(timezone.utc)
@@ -3018,26 +3138,26 @@ class ElementCheckerApp(tk.Tk):
                     show_message = parts[1] == "1"
                     path = parts[2]
                     row_count = parts[3]
-                    self.export_status_var.set(f"Saved {row_count} row(s): {path}")
-                    self._append_log(f"Excel export saved {row_count} row(s): {path}")
+                    self.export_status_var.set(f"Сохранено строк: {row_count}; файл: {path}")
+                    self._append_log(f"Выгрузка Excel сохранена, строк: {row_count}; файл: {path}")
                     if show_message:
-                        messagebox.showinfo("Excel export", f"Data saved to file:\n{path}")
+                        messagebox.showinfo("Выгрузка Excel", f"Данные сохранены в файл:\n{path}")
                 else:
                     show_message = len(parts) > 1 and parts[1] == "1"
-                    error = parts[2] if len(parts) > 2 else "unknown error"
+                    error = parts[2] if len(parts) > 2 else "неизвестная ошибка"
                     details = parts[3] if len(parts) > 3 else ""
                     if details:
-                        self._append_log("Excel export traceback:\n" + details)
-                    self.export_status_var.set(f"Export failed: {error}")
+                        self._append_log("Трассировка ошибки выгрузки Excel:\n" + details)
+                    self.export_status_var.set(f"Выгрузка не выполнена: {error}")
                     if show_message:
                         shown_details = details[-1200:] if details else ""
-                        messagebox.showerror("Excel export error", f"{error}\n\n{shown_details}".strip())
+                        messagebox.showerror("Ошибка выгрузки Excel", f"{error}\n\n{shown_details}".strip())
             else:
                 self._append_log(value)
         self.after(20, self._drain_ui_queue)
 
     def _on_close(self) -> None:
-        self._append_user_action("Application closing")
+        self._append_user_action("Приложение закрывается")
         self._disconnect()
         self.db_writer.close()
         if self.settings_window is not None and self.settings_window.winfo_exists():

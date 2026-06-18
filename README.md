@@ -13,7 +13,13 @@ The main window also has an Engineering menu. It contains 48 channel buttons gro
 Engineering channel parameters are saved to `channel_settings.json` after confirmation.
 The Engineering menu also has a JSON/Excel settings block. It can load channel settings from a selected `.json` or `.xlsx` file and save the current channel settings to any selected JSON or Excel file. Loading from Excel also updates the working `channel_settings.json`.
 
-On startup the app reads `element_checker_settings.xlsx` from the repository folder. Sensor names are taken from `Name`; sensors where `Used` is not `1` are disabled. `Tmin` and `Tmax` define the cell indicator color: blue below minimum, green in range, red above maximum.
+On startup the app reads `element_checker_settings.xlsx` from the repository folder. Sensor names are taken from `Name`; sensors where `Used` is not `1` are disabled. Limits `Tmin`, `Tmax`, `Twar`, `Tcrit`, and `Temerg` define the sensor button color according to the same `color_level` scale that is written to PostgreSQL and used by Grafana.
+
+The sensor button shows the sensor name on the first line and the latest value on the second line. A trend symbol is added after the value when at least 10 values are available:
+
+- `↑`: the average of the last 5 values is more than 2 degrees higher than the average of the previous 5 values
+- `↓`: the average of the last 5 values is more than 2 degrees lower than the average of the previous 5 values
+- `=`: the difference between these averages is within 2 degrees
 
 For temperature sensors, the stored value is corrected with `T = a * raw + b`. For heat flux sensors, the stored value is converted to W/m² with the Stefan-Boltzmann formula `q = epsilon * sigma * (raw + 273.15)^4`, where `sigma = 5.670374419e-8`.
 The original decoded device value before conversion is stored in `raw_temperature`.
@@ -82,6 +88,9 @@ Open Grafana with the credentials from `.env` or `.env.example`:
 
 - user: `admin`
 - password: `admin`
+
+For viewing dashboards without editing, use Grafana user `user` with password `user`.
+For editing dashboard graph colors, line styles, and overrides, use Grafana user `test` with password `test`.
 
 The provisioned dashboard is in the `Elemer` folder and uses the `sensor_measurements` table created by the application.
 

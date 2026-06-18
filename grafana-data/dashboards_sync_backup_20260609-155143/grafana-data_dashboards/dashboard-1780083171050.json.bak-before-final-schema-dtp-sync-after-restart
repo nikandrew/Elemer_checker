@@ -4,11 +4,11 @@
   "metadata": {
     "name": "ad2g4bz",
     "namespace": "default",
-    "uid": "e70ade83-3273-4e9a-aa39-a15b3a50eed6",
-    "generation": 4,
-    "creationTimestamp": "2026-06-02T10:37:10Z",
+    "uid": "da92bfa8-dc50-4c0a-a8f7-028ef5790aa9",
+    "generation": 9,
+    "creationTimestamp": "2026-05-31T19:06:55Z",
     "labels": {
-      "grafana.app/deprecatedInternalID": "3613990008889344"
+      "grafana.app/deprecatedInternalID": "3017498732408832"
     },
     "annotations": {
       "grafana.app/createdBy": "access-policy:service",
@@ -16,11 +16,12 @@
       "grafana.app/managedBy": "classic-file-provisioning",
       "grafana.app/managerAllowsEdits": "true",
       "grafana.app/managerId": "Elemer",
-      "grafana.app/sourceChecksum": "0e28c4d4fab77d9a26541855e327d11c",
-      "grafana.app/sourcePath": "/var/lib/grafana/dashboards/ad2g4bz-dashboard.json",
-      "grafana.app/sourceTimestamp": "1781087368000",
+      "grafana.app/saved-from-ui": "Grafana v13.0.1 (a100054f)",
+      "grafana.app/sourceChecksum": "a953c958d592777848510b5f43c7f9fd",
+      "grafana.app/sourcePath": "/var/lib/grafana/dashboards/dashboard-1780083171050.json",
+      "grafana.app/sourceTimestamp": "1780256092000",
       "grafana.app/updatedBy": "user:dfnpuki5l87b4c",
-      "grafana.app/updatedTimestamp": "2026-06-10T10:14:21Z"
+      "grafana.app/updatedTimestamp": "2026-05-31T19:46:06Z"
     }
   },
   "spec": {
@@ -702,7 +703,7 @@
                       "fixed": "transparent"
                     },
                     "image": {
-                      "fixed": "http://localhost:3001/public/img/elemer/Elemer_board_dtp_large_6473667f.png",
+                      "fixed": "http://localhost:3001/public/img/elemer/Elemer_board_dtp_large.png",
                       "mode": "fixed"
                     },
                     "size": "original"
@@ -2397,14 +2398,10 @@
     "links": [],
     "liveNow": false,
     "preload": false,
-    "tags": [
-      "Elemer",
-      "ДТП",
-      "Схема"
-    ],
+    "tags": [],
     "timeSettings": {
       "timezone": "browser",
-      "from": "now-15m",
+      "from": "now-6h",
       "to": "now",
       "autoRefresh": "1s",
       "autoRefreshIntervals": [
@@ -2416,49 +2413,8 @@
         "5m",
         "15m",
         "30m",
-        "1h"
-      ],
-      "quickRanges": [
-        {
-          "display": "Last 1 minute",
-          "from": "now-1m",
-          "to": "now"
-        },
-        {
-          "display": "Last 5 minutes",
-          "from": "now-5m",
-          "to": "now"
-        },
-        {
-          "display": "Last 15 minutes",
-          "from": "now-15m",
-          "to": "now"
-        },
-        {
-          "display": "Last 30 minutes",
-          "from": "now-30m",
-          "to": "now"
-        },
-        {
-          "display": "Last 1 hour",
-          "from": "now-1h",
-          "to": "now"
-        },
-        {
-          "display": "Last 6 hours",
-          "from": "now-6h",
-          "to": "now"
-        },
-        {
-          "display": "Last 12 hours",
-          "from": "now-12h",
-          "to": "now"
-        },
-        {
-          "display": "Last 24 hours",
-          "from": "now-24h",
-          "to": "now"
-        }
+        "1h",
+        "2h"
       ],
       "hideTimepicker": false,
       "fiscalYearStartMonth": 0

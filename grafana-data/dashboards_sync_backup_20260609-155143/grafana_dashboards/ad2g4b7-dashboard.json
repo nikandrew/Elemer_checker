@@ -5,7 +5,7 @@
     "name": "ad2g4b7",
     "namespace": "default",
     "uid": "02ea8b8e-3b86-4eac-b915-93f86d58c57a",
-    "generation": 19,
+    "generation": 18,
     "creationTimestamp": "2026-06-02T07:20:21Z",
     "labels": {
       "grafana.app/deprecatedInternalID": "3564460703776768"
@@ -16,11 +16,12 @@
       "grafana.app/managedBy": "classic-file-provisioning",
       "grafana.app/managerAllowsEdits": "true",
       "grafana.app/managerId": "Elemer",
-      "grafana.app/sourceChecksum": "7a4cfaba463af0610f79a0e1941efe5c",
+      "grafana.app/saved-from-ui": "Grafana v13.0.1 (a100054f)",
+      "grafana.app/sourceChecksum": "d02fd466e3dbfa3db9f9df23ef32640a",
       "grafana.app/sourcePath": "/var/lib/grafana/dashboards/ad2g4b7-dashboard.json",
-      "grafana.app/sourceTimestamp": "1781087368000",
+      "grafana.app/sourceTimestamp": "1780984337000",
       "grafana.app/updatedBy": "user:dfnpuki5l87b4c",
-      "grafana.app/updatedTimestamp": "2026-06-10T10:14:10Z"
+      "grafana.app/updatedTimestamp": "2026-06-09T11:43:25Z"
     }
   },
   "spec": {
@@ -4665,11 +4666,7 @@
     "links": [],
     "liveNow": false,
     "preload": false,
-    "tags": [
-      "Elemer",
-      "ТД",
-      "Схема"
-    ],
+    "tags": [],
     "timeSettings": {
       "timezone": "browser",
       "from": "now-15m",

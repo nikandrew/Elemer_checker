@@ -5,7 +5,7 @@
     "name": "adk6mdc",
     "namespace": "default",
     "uid": "fa54299a-273f-45b1-8614-a55c5cacb9b5",
-    "generation": 17,
+    "generation": 7,
     "creationTimestamp": "2026-06-02T10:37:10Z",
     "labels": {
       "grafana.app/deprecatedInternalID": "3613990436708352"
@@ -16,12 +16,11 @@
       "grafana.app/managedBy": "classic-file-provisioning",
       "grafana.app/managerAllowsEdits": "true",
       "grafana.app/managerId": "Elemer",
-      "grafana.app/saved-from-ui": "Grafana v13.0.1 (a100054f)",
-      "grafana.app/sourceChecksum": "85b00a338115691899bc0f3ad3a3329c",
+      "grafana.app/sourceChecksum": "3451259885eaf69f51cd7c26e748f046",
       "grafana.app/sourcePath": "/var/lib/grafana/dashboards/adk6mdc-dashboard.json",
-      "grafana.app/sourceTimestamp": "1781087368000",
-      "grafana.app/updatedBy": "user:bfope8tc2ek8wc",
-      "grafana.app/updatedTimestamp": "2026-06-10T10:44:29Z"
+      "grafana.app/sourceTimestamp": "1780985589000",
+      "grafana.app/updatedBy": "user:dfnpuki5l87b4c",
+      "grafana.app/updatedTimestamp": "2026-06-09T06:08:37Z"
     }
   },
   "spec": {
@@ -586,9 +585,9 @@
                 "overrides": [
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 1 - АБ Т6Т"
+                      "options": "^1\\s*-"
                     },
                     "properties": [
                       {
@@ -600,25 +599,15 @@
                       },
                       {
                         "id": "custom.lineWidth",
-                        "value": 3
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
+                        "value": 2
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 2 - АБ Т7Т"
+                      "options": "^2\\s*-"
                     },
                     "properties": [
                       {
@@ -631,24 +620,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 3 - АРК Т8Т"
+                      "options": "^3\\s*-"
                     },
                     "properties": [
                       {
@@ -661,20 +640,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 4 - АРК Т9Т"
+                      "options": "^4\\s*-"
                     },
                     "properties": [
                       {
@@ -687,24 +660,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 5 - ОПН Т10Т"
+                      "options": "^5\\s*-"
                     },
                     "properties": [
                       {
@@ -717,20 +680,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 6 - ОПН Т11Т"
+                      "options": "^6\\s*-"
                     },
                     "properties": [
                       {
@@ -743,24 +700,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 7 - ОПН Т12Т"
+                      "options": "^7\\s*-"
                     },
                     "properties": [
                       {
@@ -773,20 +720,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 8 - Т1Т"
+                      "options": "^8\\s*-"
                     },
                     "properties": [
                       {
@@ -799,24 +740,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 9 - Т2Т"
+                      "options": "^9\\s*-"
                     },
                     "properties": [
                       {
@@ -829,20 +760,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 10 - Т3Т"
+                      "options": "^10\\s*-"
                     },
                     "properties": [
                       {
@@ -855,632 +780,446 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 11 - Т4Т"
+                      "options": "^11\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#393b79",
+                          "fixedColor": "#0057b8",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 12 - Т5Т"
+                      "options": "^12\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#637939",
+                          "fixedColor": "#f15a24",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 13 - Датчик 13"
+                      "options": "^13\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#8c6d31",
+                          "fixedColor": "#00a651",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 14 - Датчик 14"
+                      "options": "^14\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#843c39",
+                          "fixedColor": "#ed1c24",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 15 - Датчик 15"
+                      "options": "^15\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#7b4173",
+                          "fixedColor": "#662d91",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 16 - Датчик 16"
+                      "options": "^16\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#3182bd",
+                          "fixedColor": "#a67c52",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 17 - СБ Т13Т"
+                      "options": "^17\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#31a354",
+                          "fixedColor": "#ec008c",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 18 - СБ Т14Т"
+                      "options": "^18\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#756bb1",
+                          "fixedColor": "#58595b",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 19 - СБ Т15Т"
+                      "options": "^19\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#e6550d",
+                          "fixedColor": "#c4d600",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 20 - АФС-S Т16Т"
+                      "options": "^20\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#636363",
+                          "fixedColor": "#00aeef",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 21 - АФС-S Т17Т"
+                      "options": "^21\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#9ecae1",
+                          "fixedColor": "#003f5c",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 22 - АФС-S Т18Т"
+                      "options": "^22\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#a1d99b",
+                          "fixedColor": "#ffa600",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 23 - АФС-S Т19Т"
+                      "options": "^23\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#bcbddc",
+                          "fixedColor": "#2f4b7c",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 24 - АФС-Х Т20Т"
+                      "options": "^24\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#fdae6b",
+                          "fixedColor": "#f95d6a",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 25 - АФС-ГНСС Т21Т"
+                      "options": "^25\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#6baed6",
+                          "fixedColor": "#665191",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 26 - АФС-ГНСС Т22Т"
+                      "options": "^26\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#74c476",
+                          "fixedColor": "#a05195",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 27 - Кр. ЗД Т23Т"
+                      "options": "^27\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#9e9ac8",
+                          "fixedColor": "#d45087",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 28 - шт. АФС-S Т24Т"
+                      "options": "^28\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#fd8d3c",
+                          "fixedColor": "#ff6e54",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 29 - шт. АФС-S Т25Т"
+                      "options": "^29\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#08519c",
+                          "fixedColor": "#4e79a7",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 30 - шт. АФС-S Т26Т"
+                      "options": "^30\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#006d2c",
+                          "fixedColor": "#59a14f",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 31 - резерв ТР1Т"
+                      "options": "^31\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#54278f",
+                          "fixedColor": "#e15759",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 32 - резерв ТР2Т"
+                      "options": "^32\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#a63603",
+                          "fixedColor": "#76b7b2",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   }
@@ -1899,8 +1638,8 @@
                       "spec": {
                         "x": 0,
                         "y": 0,
-                        "width": 21,
-                        "height": 16,
+                        "width": 24,
+                        "height": 15,
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-4"
@@ -1911,9 +1650,9 @@
                       "kind": "GridLayoutItem",
                       "spec": {
                         "x": 0,
-                        "y": 16,
-                        "width": 10,
-                        "height": 9,
+                        "y": 15,
+                        "width": 12,
+                        "height": 13,
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-2"
@@ -1923,10 +1662,10 @@
                     {
                       "kind": "GridLayoutItem",
                       "spec": {
-                        "x": 10,
-                        "y": 16,
-                        "width": 11,
-                        "height": 9,
+                        "x": 12,
+                        "y": 15,
+                        "width": 12,
+                        "height": 13,
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-5"
@@ -1944,11 +1683,7 @@
     "links": [],
     "liveNow": true,
     "preload": false,
-    "tags": [
-      "Elemer",
-      "ТД",
-      "Графики"
-    ],
+    "tags": [],
     "timeSettings": {
       "timezone": "browser",
       "from": "now-15m",

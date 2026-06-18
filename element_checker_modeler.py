@@ -9,7 +9,6 @@ from datetime import datetime, timedelta, timezone
 import tkinter as tk
 
 from element_checker import (
-    AUTO_SENSOR_POLL_PERIOD_S,
     DEVICE_COUNT,
     SENSOR_KIND_HEAT_FLUX,
     STEFAN_BOLTZMANN,
@@ -22,8 +21,10 @@ from element_checker import (
 )
 
 
-MODELER_GREEN_JITTER = 0.3
-MODELER_MAX_STEP = 1.0
+MODELER_GREEN_JITTER = 0.01
+MODELER_STABLE_MAX_STEP = 0.01
+MODELER_MAX_RATE_C_PER_S = 3.0
+MODELER_TARGET_RECALC_INTERVAL_S = 60.0
 MODELER_EXCURSION_CHANCE = 0.02
 MODELER_SENSOR_TYPE_CODE = 0
 
@@ -65,10 +66,21 @@ class ElementCheckerModelerApp(ElementCheckerApp):
             [None for _channel in range(TELEMETRY_CHANNELS)]
             for _device in range(DEVICE_COUNT)
         ]
-        self.title("Element TM5104 Modbus Checker - ЭМУЛЯТОР")
+        self.modeler_last_update_at: list[list[float | None]] = [
+            [None for _channel in range(TELEMETRY_CHANNELS)]
+            for _device in range(DEVICE_COUNT)
+        ]
+        self.modeler_next_target_recalc_at: list[list[float]] = [
+            [
+                time.monotonic() + random.uniform(0.0, MODELER_TARGET_RECALC_INTERVAL_S)
+                for _channel in range(TELEMETRY_CHANNELS)
+            ]
+            for _device in range(DEVICE_COUNT)
+        ]
+        self.title("Проверка Modbus Элемер TM5104 - ЭМУЛЯТОР")
         self.serial_port = ModelerSerialPort()
         self.connect_button.configure(text="Эмулятор включен")
-        self.status_var.set("Эмулятор: моделируются только активные датчики, сырая температура 5..35 C")
+        self.status_var.set("Эмулятор: моделируются только активные датчики, сырая температура 5..35 °C")
         self.auto_poll_status_var.set("Эмулятор готов")
         self._append_log("ЭМУЛЯТОР: COM-порт не используется, моделируются только активные датчики из настроек.")
         self.after(500, self._start_auto_poll)
@@ -144,7 +156,7 @@ class ElementCheckerModelerApp(ElementCheckerApp):
             return
         if not self.sensor_settings[device_index][channel - 1].used:
             return
-        self._set_temperature_label(device_index, channel, "reading")
+        self._set_temperature_label(device_index, channel, "чтение")
         self._handle_emulated_measurement(device_index, channel, self._settings(device_index).slave_addr)
 
     def _request_all_temperatures(self, auto: bool = False) -> bool:
@@ -193,7 +205,7 @@ class ElementCheckerModelerApp(ElementCheckerApp):
                     self.auto_poll_next_due[key] = now
                 if now >= self.auto_poll_next_due[key]:
                     due_channels.append(key)
-                    self.auto_poll_next_due[key] = now + AUTO_SENSOR_POLL_PERIOD_S
+                    self.auto_poll_next_due[key] = now + self.auto_poll_period_s
 
         if not due_channels:
             return False
@@ -215,7 +227,7 @@ class ElementCheckerModelerApp(ElementCheckerApp):
 
     def _poll_channels_block_for_worker(self, settings: PortSettings, device_index: int, channels: list[int]) -> None:
         for channel in channels:
-            self.ui_queue.put(("temp", f"{device_index}|{channel}|reading"))
+            self.ui_queue.put(("temp", f"{device_index}|{channel}|чтение"))
             response = self._emulated_response(settings.slave_addr, device_index, channel)
             self.ui_queue.put(
                 (
@@ -290,10 +302,12 @@ class ElementCheckerModelerApp(ElementCheckerApp):
         return (measurement - sensor.calibration_b) / sensor.calibration_a
 
     @staticmethod
-    def _move_toward(current: float, target: float) -> float:
-        if abs(target - current) <= MODELER_MAX_STEP:
+    def _move_toward(current: float, target: float, max_step: float) -> float:
+        if max_step <= 0:
+            return current
+        if abs(target - current) <= max_step:
             return target
-        step = random.uniform(0.2, MODELER_MAX_STEP)
+        step = max_step
         if target < current:
             step = -step
         return current + step
@@ -302,29 +316,49 @@ class ElementCheckerModelerApp(ElementCheckerApp):
         green_min, green_max = self._green_range(device_index, channel)
         previous_raw = self.modeler_values[device_index][channel - 1]
         previous = self._measurement_from_raw(device_index, channel, previous_raw)
+        now = time.monotonic()
+        last_update_at = self.modeler_last_update_at[device_index][channel - 1]
         if previous is None:
+            self.modeler_last_update_at[device_index][channel - 1] = now
             return random.uniform(green_min, green_max)
 
+        elapsed = max(0.0, now - last_update_at) if last_update_at is not None else 0.0
+        rate_limited_step = min(
+            MODELER_STABLE_MAX_STEP,
+            max(0.0, elapsed * MODELER_MAX_RATE_C_PER_S),
+        )
         target = self.modeler_excursions[device_index][channel - 1]
-        if target is None and random.random() < MODELER_EXCURSION_CHANCE:
-            if random.random() < 0.8:
-                target = self._high_excursion_target(device_index, channel)
-            else:
-                target = self._low_excursion_target(device_index, channel)
-            self.modeler_excursions[device_index][channel - 1] = target
+        if target is None and now >= self.modeler_next_target_recalc_at[device_index][channel - 1]:
+            self.modeler_next_target_recalc_at[device_index][channel - 1] = (
+                now + MODELER_TARGET_RECALC_INTERVAL_S
+            )
+            if random.random() < MODELER_EXCURSION_CHANCE:
+                if random.random() < 0.8:
+                    target = self._high_excursion_target(device_index, channel)
+                else:
+                    target = self._low_excursion_target(device_index, channel)
+                self.modeler_excursions[device_index][channel - 1] = target
 
         if target is not None:
-            next_value = self._move_toward(previous, target)
+            next_value = self._move_toward(previous, target, rate_limited_step)
             if next_value == target:
                 if green_min <= target <= green_max:
                     self.modeler_excursions[device_index][channel - 1] = None
                 else:
                     self.modeler_excursions[device_index][channel - 1] = random.uniform(green_min, green_max)
+            self.modeler_last_update_at[device_index][channel - 1] = now
             return next_value
 
         if green_min <= previous <= green_max:
-            return min(green_max, max(green_min, previous + random.uniform(-MODELER_GREEN_JITTER, MODELER_GREEN_JITTER)))
-        return self._move_toward(previous, random.uniform(green_min, green_max))
+            jitter = random.uniform(-MODELER_GREEN_JITTER, MODELER_GREEN_JITTER)
+            if abs(jitter) > rate_limited_step:
+                jitter = rate_limited_step if jitter > 0 else -rate_limited_step
+            self.modeler_last_update_at[device_index][channel - 1] = now
+            return min(green_max, max(green_min, previous + jitter))
+
+        next_value = self._move_toward(previous, random.uniform(green_min, green_max), rate_limited_step)
+        self.modeler_last_update_at[device_index][channel - 1] = now
+        return next_value
 
     def _emulated_response(self, slave_addr: int, device_index: int, channel: int) -> bytes:
         measurement = self._next_modeled_measurement(device_index, channel)

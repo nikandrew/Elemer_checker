@@ -1,0 +1,659 @@
+{
+  "kind": "Dashboard",
+  "apiVersion": "dashboard.grafana.app/v2",
+  "metadata": {
+    "name": "td-speeds",
+    "namespace": "default",
+    "uid": "a044f099-47ca-442d-8f69-e4c39ca03623",
+    "generation": 12,
+    "creationTimestamp": "2026-06-09T12:11:30Z",
+    "labels": {
+      "grafana.app/deprecatedInternalID": "1670843688214528"
+    },
+    "annotations": {
+      "grafana.app/createdBy": "access-policy:service",
+      "grafana.app/folder": "dfnpukwyy1p8gf",
+      "grafana.app/managedBy": "classic-file-provisioning",
+      "grafana.app/managerAllowsEdits": "true",
+      "grafana.app/managerId": "Elemer",
+      "grafana.app/sourceChecksum": "8fe6c57e58d99d6015e853c9540f80c0",
+      "grafana.app/sourcePath": "/var/lib/grafana/dashboards/td-speeds-dashboard.json",
+      "grafana.app/sourceTimestamp": "1781087368000",
+      "grafana.app/updatedBy": "access-policy:service",
+      "grafana.app/updatedTimestamp": "2026-06-10T06:22:38Z"
+    }
+  },
+  "spec": {
+    "annotations": [
+      {
+        "kind": "AnnotationQuery",
+        "spec": {
+          "query": {
+            "kind": "DataQuery",
+            "group": "grafana",
+            "version": "v0",
+            "datasource": {
+              "name": "-- Grafana --"
+            },
+            "spec": {}
+          },
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "builtIn": true
+        }
+      }
+    ],
+    "cursorSync": "Off",
+    "editable": true,
+    "elements": {
+      "panel-1": {
+        "kind": "Panel",
+        "spec": {
+          "id": 1,
+          "title": "Скорости изменения температуры ТД",
+          "description": "Скорость считается как разница последней валидной температуры и температуры на выбранный интервал назад, пересчитанная в °C/мин.",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "postgres",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "WITH params AS (\n  SELECT make_interval(secs => ${Rate_Interval:raw}::int) AS dt\n), active_sensors AS (\n  SELECT DISTINCT ON (sm.global_channel)\n    sm.global_channel,\n    COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', sm.global_channel)) AS sensor_name\n  FROM public.sensor_measurements sm\n  WHERE sm.sensor_used = true\n    AND sm.sensor_kind_code = 1\n    AND sm.global_channel BETWEEN 1 AND 32\n  ORDER BY sm.global_channel, sm.\"time\" DESC\n), points AS (\n  SELECT\n    a.global_channel,\n    a.sensor_name,\n    latest.avg_time AS latest_time,\n    latest.avg_temperature AS latest_temperature,\n    latest.measurements_count AS latest_measurements_count,\n    previous.avg_time AS previous_time,\n    previous.avg_temperature AS previous_temperature,\n    previous.measurements_count AS previous_measurements_count\n  FROM active_sensors a\n  CROSS JOIN params p\n  LEFT JOIN LATERAL (\n    SELECT\n      to_timestamp(avg(EXTRACT(EPOCH FROM sample.\"time\"))) AS avg_time,\n      avg(sample.temperature) AS avg_temperature,\n      count(*) AS measurements_count\n    FROM (\n      SELECT sm.\"time\", sm.temperature\n      FROM public.sensor_measurements sm\n      WHERE sm.global_channel = a.global_channel\n        AND sm.sensor_used = true\n        AND sm.valid = true\n        AND sm.sensor_kind_code = 1\n        AND sm.temperature IS NOT NULL\n      ORDER BY sm.\"time\" DESC\n      LIMIT 5\n    ) sample\n  ) latest ON true\n  LEFT JOIN LATERAL (\n    SELECT\n      to_timestamp(avg(EXTRACT(EPOCH FROM sample.\"time\"))) AS avg_time,\n      avg(sample.temperature) AS avg_temperature,\n      count(*) AS measurements_count\n    FROM (\n      SELECT sm.\"time\", sm.temperature\n      FROM public.sensor_measurements sm\n      WHERE sm.global_channel = a.global_channel\n        AND sm.sensor_used = true\n        AND sm.valid = true\n        AND sm.sensor_kind_code = 1\n        AND sm.temperature IS NOT NULL\n        AND sm.\"time\" <= now() - p.dt\n      ORDER BY sm.\"time\" DESC\n      LIMIT 5\n    ) sample\n  ) previous ON true\n)\nSELECT\n  concat(global_channel, ' - ', sensor_name) AS \"metric\",\n  ROUND(\n    (\n      (latest_temperature - previous_temperature)\n      / NULLIF(EXTRACT(EPOCH FROM (latest_time - previous_time)), 0)\n      * 60.0\n    )::numeric,\n    3\n  ) AS \"value\"\nFROM points\nWHERE latest_measurements_count = 5\n  AND previous_measurements_count = 5\n  AND latest_time > previous_time\nORDER BY global_channel;",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [
+                {
+                  "kind": "Transformation",
+                  "group": "rowsToFields",
+                  "spec": {
+                    "options": {
+                      "mappings": [
+                        {
+                          "fieldName": "metric",
+                          "handlerKey": "field.name"
+                        },
+                        {
+                          "fieldName": "value",
+                          "handlerKey": "field.value"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.0.1",
+            "spec": {
+              "options": {
+                "colorMode": "background_solid",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "suffix: °C/мин",
+                  "decimals": 3,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "blue"
+                      },
+                      {
+                        "value": -1,
+                        "color": "green"
+                      },
+                      {
+                        "value": 1,
+                        "color": "orange"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-2": {
+        "kind": "Panel",
+        "spec": {
+          "id": 2,
+          "title": "График скорости 1",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "postgres",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "time_series",
+                        "rawQuery": true,
+                        "rawSql": "WITH save_graph AS (\n    INSERT INTO public.grafana_variable_state (dashboard_uid, graph_1, updated_at)\n    VALUES ('td-speeds', ${Graph_1}::integer, now())\n    ON CONFLICT (dashboard_uid) DO UPDATE\n    SET graph_1 = EXCLUDED.graph_1, updated_at = now()\n    RETURNING graph_1\n), params AS (\n    SELECT make_interval(secs => ${Rate_Interval:raw}::int) AS dt\n), samples AS (\n    SELECT sm.\"time\"\n    FROM public.sensor_measurements sm\n    WHERE\n        sm.global_channel = ${Graph_1}\n        AND sm.sensor_used = true\n        AND sm.valid = true\n        AND sm.sensor_kind_code = 1\n        AND sm.temperature IS NOT NULL\n        AND $__timeFilter(sm.\"time\")\n), speed AS (\n    SELECT\n        s.\"time\",\n        latest.avg_time AS latest_time,\n        latest.avg_temperature AS latest_temperature,\n        latest.measurements_count AS latest_measurements_count,\n        previous.avg_time AS previous_time,\n        previous.avg_temperature AS previous_temperature,\n        previous.measurements_count AS previous_measurements_count\n    FROM samples s\n    CROSS JOIN params p\n    LEFT JOIN LATERAL (\n        SELECT\n            to_timestamp(avg(EXTRACT(EPOCH FROM sample.\"time\"))) AS avg_time,\n            avg(sample.temperature) AS avg_temperature,\n            count(*) AS measurements_count\n        FROM (\n            SELECT sm.\"time\", sm.temperature\n            FROM public.sensor_measurements sm\n            WHERE sm.global_channel = ${Graph_1}\n              AND sm.sensor_used = true\n              AND sm.valid = true\n              AND sm.sensor_kind_code = 1\n              AND sm.temperature IS NOT NULL\n              AND sm.\"time\" <= s.\"time\"\n            ORDER BY sm.\"time\" DESC\n            LIMIT 5\n        ) sample\n    ) latest ON true\n    LEFT JOIN LATERAL (\n        SELECT\n            to_timestamp(avg(EXTRACT(EPOCH FROM sample.\"time\"))) AS avg_time,\n            avg(sample.temperature) AS avg_temperature,\n            count(*) AS measurements_count\n        FROM (\n            SELECT sm.\"time\", sm.temperature\n            FROM public.sensor_measurements sm\n            WHERE sm.global_channel = ${Graph_1}\n              AND sm.sensor_used = true\n              AND sm.valid = true\n              AND sm.sensor_kind_code = 1\n              AND sm.temperature IS NOT NULL\n              AND sm.\"time\" <= s.\"time\" - p.dt\n            ORDER BY sm.\"time\" DESC\n            LIMIT 5\n        ) sample\n    ) previous ON true\n)\nSELECT\n    \"time\",\n    ROUND(\n        (\n            (latest_temperature - previous_temperature)\n            / NULLIF(EXTRACT(EPOCH FROM (latest_time - previous_time)), 0)\n            * 60.0\n        )::numeric,\n        3\n    ) AS value,\n    'Скорость, °C/мин' AS metric\nFROM speed\nWHERE latest_measurements_count = 5\n  AND previous_measurements_count = 5\n  AND latest_time > previous_time\nORDER BY \"time\";",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.0.1",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [
+                    "lastNotNull",
+                    "min",
+                    "max"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "suffix: °C/мин",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "°C/мин",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 8,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 2,
+                    "pointSize": 3,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "never",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      },
+      "panel-3": {
+        "kind": "Panel",
+        "spec": {
+          "id": 3,
+          "title": "График скорости 2",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "postgres",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "elemer-postgres"
+                      },
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "time_series",
+                        "rawQuery": true,
+                        "rawSql": "WITH save_graph AS (\n    INSERT INTO public.grafana_variable_state (dashboard_uid, graph_2, updated_at)\n    VALUES ('td-speeds', ${Graph_2}::integer, now())\n    ON CONFLICT (dashboard_uid) DO UPDATE\n    SET graph_2 = EXCLUDED.graph_2, updated_at = now()\n    RETURNING graph_2\n), params AS (\n    SELECT make_interval(secs => ${Rate_Interval:raw}::int) AS dt\n), samples AS (\n    SELECT sm.\"time\"\n    FROM public.sensor_measurements sm\n    WHERE\n        sm.global_channel = ${Graph_2}\n        AND sm.sensor_used = true\n        AND sm.valid = true\n        AND sm.sensor_kind_code = 1\n        AND sm.temperature IS NOT NULL\n        AND $__timeFilter(sm.\"time\")\n), speed AS (\n    SELECT\n        s.\"time\",\n        latest.avg_time AS latest_time,\n        latest.avg_temperature AS latest_temperature,\n        latest.measurements_count AS latest_measurements_count,\n        previous.avg_time AS previous_time,\n        previous.avg_temperature AS previous_temperature,\n        previous.measurements_count AS previous_measurements_count\n    FROM samples s\n    CROSS JOIN params p\n    LEFT JOIN LATERAL (\n        SELECT\n            to_timestamp(avg(EXTRACT(EPOCH FROM sample.\"time\"))) AS avg_time,\n            avg(sample.temperature) AS avg_temperature,\n            count(*) AS measurements_count\n        FROM (\n            SELECT sm.\"time\", sm.temperature\n            FROM public.sensor_measurements sm\n            WHERE sm.global_channel = ${Graph_2}\n              AND sm.sensor_used = true\n              AND sm.valid = true\n              AND sm.sensor_kind_code = 1\n              AND sm.temperature IS NOT NULL\n              AND sm.\"time\" <= s.\"time\"\n            ORDER BY sm.\"time\" DESC\n            LIMIT 5\n        ) sample\n    ) latest ON true\n    LEFT JOIN LATERAL (\n        SELECT\n            to_timestamp(avg(EXTRACT(EPOCH FROM sample.\"time\"))) AS avg_time,\n            avg(sample.temperature) AS avg_temperature,\n            count(*) AS measurements_count\n        FROM (\n            SELECT sm.\"time\", sm.temperature\n            FROM public.sensor_measurements sm\n            WHERE sm.global_channel = ${Graph_2}\n              AND sm.sensor_used = true\n              AND sm.valid = true\n              AND sm.sensor_kind_code = 1\n              AND sm.temperature IS NOT NULL\n              AND sm.\"time\" <= s.\"time\" - p.dt\n            ORDER BY sm.\"time\" DESC\n            LIMIT 5\n        ) sample\n    ) previous ON true\n)\nSELECT\n    \"time\",\n    ROUND(\n        (\n            (latest_temperature - previous_temperature)\n            / NULLIF(EXTRACT(EPOCH FROM (latest_time - previous_time)), 0)\n            * 60.0\n        )::numeric,\n        3\n    ) AS value,\n    'Скорость, °C/мин' AS metric\nFROM speed\nWHERE latest_measurements_count = 5\n  AND previous_measurements_count = 5\n  AND latest_time > previous_time\nORDER BY \"time\";",
+                        "sql": {
+                          "columns": [
+                            {
+                              "parameters": [],
+                              "type": "function"
+                            }
+                          ],
+                          "groupBy": [
+                            {
+                              "property": {
+                                "type": "string"
+                              },
+                              "type": "groupBy"
+                            }
+                          ],
+                          "limit": 50
+                        }
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "timeseries",
+            "version": "13.0.1",
+            "spec": {
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [
+                    "lastNotNull",
+                    "min",
+                    "max"
+                  ],
+                  "displayMode": "table",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "unit": "suffix: °C/мин",
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "green"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "°C/мин",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 8,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 2,
+                    "pointSize": 3,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "never",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
+      }
+    },
+    "layout": {
+      "kind": "GridLayout",
+      "spec": {
+        "items": [
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 12,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-1"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 0,
+              "y": 12,
+              "width": 12,
+              "height": 10,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-2"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 12,
+              "y": 12,
+              "width": 12,
+              "height": 10,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-3"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "links": [],
+    "liveNow": false,
+    "preload": false,
+    "tags": [
+      "Elemer",
+      "ТД",
+      "скорость"
+    ],
+    "timeSettings": {
+      "timezone": "browser",
+      "from": "now-15m",
+      "to": "now",
+      "autoRefresh": "1s",
+      "autoRefreshIntervals": [
+        "1s",
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m",
+        "15m",
+        "30m",
+        "1h"
+      ],
+      "quickRanges": [
+        {
+          "display": "Last 1 minute",
+          "from": "now-1m",
+          "to": "now"
+        },
+        {
+          "display": "Last 5 minutes",
+          "from": "now-5m",
+          "to": "now"
+        },
+        {
+          "display": "Last 15 minutes",
+          "from": "now-15m",
+          "to": "now"
+        },
+        {
+          "display": "Last 30 minutes",
+          "from": "now-30m",
+          "to": "now"
+        },
+        {
+          "display": "Last 1 hour",
+          "from": "now-1h",
+          "to": "now"
+        }
+      ],
+      "hideTimepicker": false,
+      "fiscalYearStartMonth": 0
+    },
+    "title": "Скорости ТД",
+    "variables": [
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "Rate_Interval",
+          "current": {
+            "text": "30 секунд",
+            "value": "30"
+          },
+          "label": "Интервал расчёта",
+          "hide": "dontHide",
+          "refresh": "onDashboardLoad",
+          "skipUrlSync": false,
+          "query": {
+            "kind": "DataQuery",
+            "group": "postgres",
+            "version": "v0",
+            "datasource": {
+              "name": "elemer-postgres"
+            },
+            "spec": {
+              "__legacyStringValue": "SELECT * FROM (VALUES\n  ('10 секунд', 10),\n  ('30 секунд', 30),\n  ('1 минута', 60),\n  ('5 минут', 300)\n) AS interval_options(__text, __value);"
+            }
+          },
+          "regex": "",
+          "regexApplyTo": "value",
+          "sort": "disabled",
+          "definition": "SELECT * FROM (VALUES\n  ('10 секунд', 10),\n  ('30 секунд', 30),\n  ('1 минута', 60),\n  ('5 минут', 300)\n) AS interval_options(__text, __value);",
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": true
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "Graph_1",
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "label": "График скорости 1",
+          "hide": "dontHide",
+          "refresh": "onDashboardLoad",
+          "skipUrlSync": false,
+          "query": {
+            "kind": "DataQuery",
+            "group": "postgres",
+            "version": "v0",
+            "datasource": {
+              "name": "elemer-postgres"
+            },
+            "spec": {
+              "__legacyStringValue": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(1, 32) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('Датчик ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.sensor_kind_code = 1\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_1 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'td-speeds'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 1) THEN 0 ELSE 1 END,\n  __value;"
+            }
+          },
+          "regex": "",
+          "regexApplyTo": "value",
+          "sort": "disabled",
+          "definition": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(1, 32) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('Датчик ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.sensor_kind_code = 1\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_1 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'td-speeds'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 1) THEN 0 ELSE 1 END,\n  __value;",
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": true
+        }
+      },
+      {
+        "kind": "QueryVariable",
+        "spec": {
+          "name": "Graph_2",
+          "current": {
+            "text": "",
+            "value": ""
+          },
+          "label": "График скорости 2",
+          "hide": "dontHide",
+          "refresh": "onDashboardLoad",
+          "skipUrlSync": false,
+          "query": {
+            "kind": "DataQuery",
+            "group": "postgres",
+            "version": "v0",
+            "datasource": {
+              "name": "elemer-postgres"
+            },
+            "spec": {
+              "__legacyStringValue": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(1, 32) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('Датчик ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.sensor_kind_code = 1\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_2 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'td-speeds'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 1) THEN 0 ELSE 1 END,\n  __value;"
+            }
+          },
+          "regex": "",
+          "regexApplyTo": "value",
+          "sort": "disabled",
+          "definition": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(1, 32) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('Датчик ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.sensor_kind_code = 1\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_2 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'td-speeds'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 1) THEN 0 ELSE 1 END,\n  __value;",
+          "options": [],
+          "multi": false,
+          "includeAll": false,
+          "allowCustomValue": true
+        }
+      }
+    ]
+  },
+  "status": {
+    "conversion": {
+      "failed": false,
+      "storedVersion": "v0alpha1"
+    }
+  }
+}

@@ -2,26 +2,25 @@
   "kind": "Dashboard",
   "apiVersion": "dashboard.grafana.app/v2",
   "metadata": {
-    "name": "adk6mdc",
+    "name": "adk6m4",
     "namespace": "default",
-    "uid": "fa54299a-273f-45b1-8614-a55c5cacb9b5",
-    "generation": 17,
-    "creationTimestamp": "2026-06-02T10:37:10Z",
+    "uid": "443a72be-0dbd-4961-a3e0-cf0839c745d8",
+    "generation": 10,
+    "creationTimestamp": "2026-06-01T11:43:10Z",
     "labels": {
-      "grafana.app/deprecatedInternalID": "3613990436708352"
+      "grafana.app/deprecatedInternalID": "3268214119829504"
     },
     "annotations": {
-      "grafana.app/createdBy": "access-policy:service",
+      "grafana.app/createdBy": "user:dfnpuki5l87b4c",
       "grafana.app/folder": "dfnpukwyy1p8gf",
       "grafana.app/managedBy": "classic-file-provisioning",
       "grafana.app/managerAllowsEdits": "true",
       "grafana.app/managerId": "Elemer",
-      "grafana.app/saved-from-ui": "Grafana v13.0.1 (a100054f)",
-      "grafana.app/sourceChecksum": "85b00a338115691899bc0f3ad3a3329c",
-      "grafana.app/sourcePath": "/var/lib/grafana/dashboards/adk6mdc-dashboard.json",
-      "grafana.app/sourceTimestamp": "1781087368000",
-      "grafana.app/updatedBy": "user:bfope8tc2ek8wc",
-      "grafana.app/updatedTimestamp": "2026-06-10T10:44:29Z"
+      "grafana.app/sourceChecksum": "a3b40ef12ca3a57690054b52893796f1",
+      "grafana.app/sourcePath": "/var/lib/grafana/dashboards/adk6m4-dashboard.json",
+      "grafana.app/sourceTimestamp": "1780985589000",
+      "grafana.app/updatedBy": "access-policy:service",
+      "grafana.app/updatedTimestamp": "2026-06-09T05:52:31Z"
     }
   },
   "spec": {
@@ -75,7 +74,7 @@
                         "editorMode": "code",
                         "format": "time_series",
                         "rawQuery": true,
-                        "rawSql": "WITH save_graph_1 AS (\n    INSERT INTO public.grafana_variable_state (dashboard_uid, graph_1, updated_at)\n    VALUES ('adk6mdc', ${Graph_1}::integer, now())\n    ON CONFLICT (dashboard_uid) DO UPDATE\n    SET graph_1 = EXCLUDED.graph_1, updated_at = now()\n    RETURNING graph_1\n),\nsrc AS (\r\n    SELECT\r\n        \"time\",\r\n        temperature,\r\n        limit_tmin,\r\n        limit_tmax,\r\n        limit_twar,\r\n        limit_tcrit,\r\n        limit_temerg\r\n    FROM public.sensor_measurements\r\n    WHERE\r\n        global_channel = ${Graph_1}\r\n        AND sensor_used = true\r\n        AND valid = true\r\n        AND temperature IS NOT NULL\r\n        AND $__timeFilter(\"time\")\r\n)\r\n\r\nSELECT\r\n    \"time\",\r\n    temperature AS \"value\",\r\n    'temperature' AS \"metric\"\r\nFROM src\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmin AS \"value\",\r\n    'Tmin' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmax AS \"value\",\r\n    'Tmax' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmax IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_twar AS \"value\",\r\n    'Twarn' AS \"metric\"\r\nFROM src\r\nWHERE limit_twar IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tcrit AS \"value\",\r\n    'Tcrit' AS \"metric\"\r\nFROM src\r\nWHERE limit_tcrit IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_temerg AS \"value\",\r\n    'Temerg' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Верхняя граница для красной зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    GREATEST(\r\n        COALESCE(temperature, limit_temerg),\r\n        COALESCE(limit_temerg, temperature)\r\n    ) AS \"value\",\r\n    'Top' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Нижняя граница для синей зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    LEAST(\r\n        COALESCE(temperature, limit_tmin),\r\n        COALESCE(limit_tmin, temperature)\r\n    ) AS \"value\",\r\n    'Bottom' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nORDER BY \"time\";",
+                        "rawSql": "WITH save_graph_1 AS (\n    INSERT INTO public.grafana_variable_state (dashboard_uid, graph_1, updated_at)\n    VALUES ('adk6m4', ${Graph_1}::integer, now())\n    ON CONFLICT (dashboard_uid) DO UPDATE\n    SET graph_1 = EXCLUDED.graph_1, updated_at = now()\n    RETURNING graph_1\n),\nsrc AS (\r\n    SELECT\r\n        \"time\",\r\n        temperature,\r\n        limit_tmin,\r\n        limit_tmax,\r\n        limit_twar,\r\n        limit_tcrit,\r\n        limit_temerg\r\n    FROM public.sensor_measurements\r\n    WHERE\r\n        global_channel = ${Graph_1}\r\n        AND sensor_used = true\r\n        AND valid = true\r\n        AND temperature IS NOT NULL\r\n        AND $__timeFilter(\"time\")\r\n)\r\n\r\nSELECT\r\n    \"time\",\r\n    temperature AS \"value\",\r\n    'temperature' AS \"metric\"\r\nFROM src\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmin AS \"value\",\r\n    'Tmin' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmax AS \"value\",\r\n    'Tmax' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmax IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_twar AS \"value\",\r\n    'Twarn' AS \"metric\"\r\nFROM src\r\nWHERE limit_twar IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tcrit AS \"value\",\r\n    'Tcrit' AS \"metric\"\r\nFROM src\r\nWHERE limit_tcrit IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_temerg AS \"value\",\r\n    'Temerg' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Верхняя граница для красной зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    GREATEST(\r\n        COALESCE(temperature, limit_temerg),\r\n        COALESCE(limit_temerg, temperature)\r\n    ) AS \"value\",\r\n    'Top' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Нижняя граница для синей зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    LEAST(\r\n        COALESCE(temperature, limit_tmin),\r\n        COALESCE(limit_tmin, temperature)\r\n    ) AS \"value\",\r\n    'Bottom' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nORDER BY \"time\";",
                         "sql": {
                           "columns": [
                             {
@@ -444,7 +443,7 @@
         "kind": "Panel",
         "spec": {
           "id": 4,
-          "title": "Все активные ТД",
+          "title": "Все активные ДТП",
           "description": "",
           "links": [],
           "data": {
@@ -466,7 +465,7 @@
                         "editorMode": "code",
                         "format": "table",
                         "rawQuery": true,
-                        "rawSql": "SELECT\n  time_bucket(make_interval(secs => GREATEST(1, ceil($__interval_ms / 50000.0)::int)), \"time\") AS \"time\",\n  avg(temperature) AS \"value\",\n  concat(global_channel, ' - ', sensor_name) AS \"metric\"\nFROM public.sensor_measurements\nWHERE $__timeFilter(\"time\")\n  AND sensor_used = true\n  AND valid = true\n  AND sensor_kind_code = 1\n  AND temperature IS NOT NULL\nGROUP BY 1, global_channel, sensor_name\nORDER BY 1 ASC;",
+                        "rawSql": "SELECT\n  time_bucket(make_interval(secs => GREATEST(1, ceil($__interval_ms / 50000.0)::int)), \"time\") AS \"time\",\n  avg(temperature) AS \"value\",\n  concat(global_channel, ' - ', sensor_name) AS \"metric\"\nFROM public.sensor_measurements\nWHERE $__timeFilter(\"time\")\n  AND sensor_used = true\n  AND valid = true\n  AND sensor_kind_code = 2\n  AND temperature IS NOT NULL\nGROUP BY 1, global_channel, sensor_name\nORDER BY 1 ASC;",
                         "sql": {
                           "columns": [
                             {
@@ -586,9 +585,9 @@
                 "overrides": [
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 1 - АБ Т6Т"
+                      "options": "^33\\s*-"
                     },
                     "properties": [
                       {
@@ -600,25 +599,15 @@
                       },
                       {
                         "id": "custom.lineWidth",
-                        "value": 3
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
+                        "value": 2
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 2 - АБ Т7Т"
+                      "options": "^34\\s*-"
                     },
                     "properties": [
                       {
@@ -631,24 +620,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 3 - АРК Т8Т"
+                      "options": "^35\\s*-"
                     },
                     "properties": [
                       {
@@ -661,20 +640,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 4 - АРК Т9Т"
+                      "options": "^36\\s*-"
                     },
                     "properties": [
                       {
@@ -687,24 +660,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 5 - ОПН Т10Т"
+                      "options": "^37\\s*-"
                     },
                     "properties": [
                       {
@@ -717,20 +680,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 6 - ОПН Т11Т"
+                      "options": "^38\\s*-"
                     },
                     "properties": [
                       {
@@ -743,24 +700,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 7 - ОПН Т12Т"
+                      "options": "^39\\s*-"
                     },
                     "properties": [
                       {
@@ -773,20 +720,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 8 - Т1Т"
+                      "options": "^40\\s*-"
                     },
                     "properties": [
                       {
@@ -799,24 +740,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 9 - Т2Т"
+                      "options": "^41\\s*-"
                     },
                     "properties": [
                       {
@@ -829,20 +760,14 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 10 - Т3Т"
+                      "options": "^42\\s*-"
                     },
                     "properties": [
                       {
@@ -855,632 +780,126 @@
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 11 - Т4Т"
+                      "options": "^43\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#393b79",
+                          "fixedColor": "#0057b8",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 12 - Т5Т"
+                      "options": "^44\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#637939",
+                          "fixedColor": "#f15a24",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 13 - Датчик 13"
+                      "options": "^45\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#8c6d31",
+                          "fixedColor": "#00a651",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 14 - Датчик 14"
+                      "options": "^46\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#843c39",
+                          "fixedColor": "#ed1c24",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 15 - Датчик 15"
+                      "options": "^47\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#7b4173",
+                          "fixedColor": "#662d91",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
                       }
                     ]
                   },
                   {
                     "matcher": {
-                      "id": "byName",
+                      "id": "byRegexp",
                       "scope": "series",
-                      "options": "value 16 - Датчик 16"
+                      "options": "^48\\s*-"
                     },
                     "properties": [
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "#3182bd",
+                          "fixedColor": "#a67c52",
                           "mode": "fixed"
                         }
                       },
                       {
                         "id": "custom.lineWidth",
                         "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 17 - СБ Т13Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#31a354",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 18 - СБ Т14Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#756bb1",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 19 - СБ Т15Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#e6550d",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 20 - АФС-S Т16Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#636363",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 21 - АФС-S Т17Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#9ecae1",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 22 - АФС-S Т18Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#a1d99b",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 23 - АФС-S Т19Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#bcbddc",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 24 - АФС-Х Т20Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#fdae6b",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 25 - АФС-ГНСС Т21Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#6baed6",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 26 - АФС-ГНСС Т22Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#74c476",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 27 - Кр. ЗД Т23Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#9e9ac8",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 28 - шт. АФС-S Т24Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#fd8d3c",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 29 - шт. АФС-S Т25Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#08519c",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 30 - шт. АФС-S Т26Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#006d2c",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 31 - резерв ТР1Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#54278f",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 32 - резерв ТР2Т"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#a63603",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
                       }
                     ]
                   }
@@ -1516,7 +935,7 @@
                         "editorMode": "code",
                         "format": "time_series",
                         "rawQuery": true,
-                        "rawSql": "WITH save_graph_2 AS (\n    INSERT INTO public.grafana_variable_state (dashboard_uid, graph_2, updated_at)\n    VALUES ('adk6mdc', ${Graph_2}::integer, now())\n    ON CONFLICT (dashboard_uid) DO UPDATE\n    SET graph_2 = EXCLUDED.graph_2, updated_at = now()\n    RETURNING graph_2\n),\nsrc AS (\r\n    SELECT\r\n        \"time\",\r\n        temperature,\r\n        limit_tmin,\r\n        limit_tmax,\r\n        limit_twar,\r\n        limit_tcrit,\r\n        limit_temerg\r\n    FROM public.sensor_measurements\r\n    WHERE\r\n        global_channel = ${Graph_2}\r\n        AND sensor_used = true\r\n        AND valid = true\r\n        AND temperature IS NOT NULL\r\n        AND $__timeFilter(\"time\")\r\n)\r\n\r\nSELECT\r\n    \"time\",\r\n    temperature AS \"value\",\r\n    'temperature' AS \"metric\"\r\nFROM src\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmin AS \"value\",\r\n    'Tmin' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmax AS \"value\",\r\n    'Tmax' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmax IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_twar AS \"value\",\r\n    'Twarn' AS \"metric\"\r\nFROM src\r\nWHERE limit_twar IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tcrit AS \"value\",\r\n    'Tcrit' AS \"metric\"\r\nFROM src\r\nWHERE limit_tcrit IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_temerg AS \"value\",\r\n    'Temerg' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Верхняя граница для красной зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    GREATEST(\r\n        COALESCE(temperature, limit_temerg),\r\n        COALESCE(limit_temerg, temperature)\r\n    ) AS \"value\",\r\n    'Top' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Нижняя граница для синей зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    LEAST(\r\n        COALESCE(temperature, limit_tmin),\r\n        COALESCE(limit_tmin, temperature)\r\n    ) AS \"value\",\r\n    'Bottom' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nORDER BY \"time\";",
+                        "rawSql": "WITH save_graph_2 AS (\n    INSERT INTO public.grafana_variable_state (dashboard_uid, graph_2, updated_at)\n    VALUES ('adk6m4', ${Graph_2}::integer, now())\n    ON CONFLICT (dashboard_uid) DO UPDATE\n    SET graph_2 = EXCLUDED.graph_2, updated_at = now()\n    RETURNING graph_2\n),\nsrc AS (\r\n    SELECT\r\n        \"time\",\r\n        temperature,\r\n        limit_tmin,\r\n        limit_tmax,\r\n        limit_twar,\r\n        limit_tcrit,\r\n        limit_temerg\r\n    FROM public.sensor_measurements\r\n    WHERE\r\n        global_channel = ${Graph_2}\r\n        AND sensor_used = true\r\n        AND valid = true\r\n        AND temperature IS NOT NULL\r\n        AND $__timeFilter(\"time\")\r\n)\r\n\r\nSELECT\r\n    \"time\",\r\n    temperature AS \"value\",\r\n    'temperature' AS \"metric\"\r\nFROM src\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmin AS \"value\",\r\n    'Tmin' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmax AS \"value\",\r\n    'Tmax' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmax IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_twar AS \"value\",\r\n    'Twarn' AS \"metric\"\r\nFROM src\r\nWHERE limit_twar IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tcrit AS \"value\",\r\n    'Tcrit' AS \"metric\"\r\nFROM src\r\nWHERE limit_tcrit IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_temerg AS \"value\",\r\n    'Temerg' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Верхняя граница для красной зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    GREATEST(\r\n        COALESCE(temperature, limit_temerg),\r\n        COALESCE(limit_temerg, temperature)\r\n    ) AS \"value\",\r\n    'Top' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Нижняя граница для синей зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    LEAST(\r\n        COALESCE(temperature, limit_tmin),\r\n        COALESCE(limit_tmin, temperature)\r\n    ) AS \"value\",\r\n    'Bottom' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nORDER BY \"time\";",
                         "sql": {
                           "columns": [
                             {
@@ -1899,8 +1318,8 @@
                       "spec": {
                         "x": 0,
                         "y": 0,
-                        "width": 21,
-                        "height": 16,
+                        "width": 24,
+                        "height": 15,
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-4"
@@ -1911,9 +1330,9 @@
                       "kind": "GridLayoutItem",
                       "spec": {
                         "x": 0,
-                        "y": 16,
-                        "width": 10,
-                        "height": 9,
+                        "y": 15,
+                        "width": 12,
+                        "height": 13,
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-2"
@@ -1923,10 +1342,10 @@
                     {
                       "kind": "GridLayoutItem",
                       "spec": {
-                        "x": 10,
-                        "y": 16,
-                        "width": 11,
-                        "height": 9,
+                        "x": 12,
+                        "y": 15,
+                        "width": 12,
+                        "height": 13,
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-5"
@@ -1944,11 +1363,7 @@
     "links": [],
     "liveNow": true,
     "preload": false,
-    "tags": [
-      "Elemer",
-      "ТД",
-      "Графики"
-    ],
+    "tags": [],
     "timeSettings": {
       "timezone": "browser",
       "from": "now-15m",
@@ -2010,7 +1425,7 @@
       "hideTimepicker": false,
       "fiscalYearStartMonth": 0
     },
-    "title": "Графики ТД",
+    "title": "Графики ДТП",
     "variables": [
       {
         "kind": "QueryVariable",
@@ -2040,9 +1455,9 @@
               },
               "editorMode": "code",
               "format": "table",
-              "query": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(1, 32) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_1 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6mdc'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 1) THEN 0 ELSE 1 END,\n  __value;",
+              "query": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(33, 48) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_1 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6m4'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 33) THEN 0 ELSE 1 END,\n  __value;",
               "rawQuery": true,
-              "rawSql": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(1, 32) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_1 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6mdc'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 1) THEN 0 ELSE 1 END,\n  __value;",
+              "rawSql": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(33, 48) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_1 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6m4'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 33) THEN 0 ELSE 1 END,\n  __value;",
               "refId": "SQLVariableQueryEditor-VariableQuery",
               "sql": {
                 "columns": [
@@ -2066,7 +1481,7 @@
           "regex": "",
           "regexApplyTo": "value",
           "sort": "disabled",
-          "definition": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(1, 32) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_1 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6mdc'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 1) THEN 0 ELSE 1 END,\n  __value;",
+          "definition": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(33, 48) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_1 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6m4'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 33) THEN 0 ELSE 1 END,\n  __value;",
           "options": [],
           "multi": false,
           "includeAll": false,
@@ -2101,9 +1516,9 @@
               },
               "editorMode": "code",
               "format": "table",
-              "query": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(1, 32) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_2 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6mdc'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 1) THEN 0 ELSE 1 END,\n  __value;",
+              "query": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(33, 48) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_2 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6m4'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 33) THEN 0 ELSE 1 END,\n  __value;",
               "rawQuery": true,
-              "rawSql": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(1, 32) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_2 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6mdc'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 1) THEN 0 ELSE 1 END,\n  __value;",
+              "rawSql": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(33, 48) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_2 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6m4'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 33) THEN 0 ELSE 1 END,\n  __value;",
               "refId": "SQLVariableQueryEditor-VariableQuery",
               "sql": {
                 "columns": [
@@ -2127,7 +1542,7 @@
           "regex": "",
           "regexApplyTo": "value",
           "sort": "disabled",
-          "definition": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(1, 32) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_2 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6mdc'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 1) THEN 0 ELSE 1 END,\n  __value;",
+          "definition": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(33, 48) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_2 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6m4'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 33) THEN 0 ELSE 1 END,\n  __value;",
           "options": [],
           "multi": false,
           "includeAll": false,

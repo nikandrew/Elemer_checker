@@ -1,26 +1,22 @@
 {
-  "kind": "Dashboard",
   "apiVersion": "dashboard.grafana.app/v2",
+  "kind": "Dashboard",
   "metadata": {
-    "name": "adk6m4",
+    "name": "adk6mdc",
     "namespace": "default",
-    "uid": "443a72be-0dbd-4961-a3e0-cf0839c745d8",
-    "generation": 11,
-    "creationTimestamp": "2026-06-01T11:43:10Z",
+    "uid": "78ecfbfe-9e25-4db2-abd7-d9ffc6993e98",
+    "resourceVersion": "1779392175981988",
+    "generation": 42,
+    "creationTimestamp": "2026-05-10T20:37:33Z",
     "labels": {
-      "grafana.app/deprecatedInternalID": "3268214119829504"
+      "grafana.app/deprecatedInternalID": "4437360814309376"
     },
     "annotations": {
-      "grafana.app/createdBy": "user:dfnpuki5l87b4c",
-      "grafana.app/folder": "dfnpukwyy1p8gf",
-      "grafana.app/managedBy": "classic-file-provisioning",
-      "grafana.app/managerAllowsEdits": "true",
-      "grafana.app/managerId": "Elemer",
-      "grafana.app/sourceChecksum": "b00c51664b43951a876c027fccf51f0f",
-      "grafana.app/sourcePath": "/var/lib/grafana/dashboards/adk6m4-dashboard.json",
-      "grafana.app/sourceTimestamp": "1781087368000",
-      "grafana.app/updatedBy": "user:dfnpuki5l87b4c",
-      "grafana.app/updatedTimestamp": "2026-06-10T10:13:30Z"
+      "grafana.app/createdBy": "user:efloadj3nkcn4c",
+      "grafana.app/folder": "",
+      "grafana.app/saved-from-ui": "Grafana v13.0.1 (a100054f21)",
+      "grafana.app/updatedBy": "user:efloadj3nkcn4c",
+      "grafana.app/updatedTimestamp": "2026-05-21T19:36:15Z"
     }
   },
   "spec": {
@@ -74,7 +70,7 @@
                         "editorMode": "code",
                         "format": "time_series",
                         "rawQuery": true,
-                        "rawSql": "WITH save_graph_1 AS (\n    INSERT INTO public.grafana_variable_state (dashboard_uid, graph_1, updated_at)\n    VALUES ('adk6m4', ${Graph_1}::integer, now())\n    ON CONFLICT (dashboard_uid) DO UPDATE\n    SET graph_1 = EXCLUDED.graph_1, updated_at = now()\n    RETURNING graph_1\n),\nsrc AS (\r\n    SELECT\r\n        \"time\",\r\n        temperature,\r\n        limit_tmin,\r\n        limit_tmax,\r\n        limit_twar,\r\n        limit_tcrit,\r\n        limit_temerg\r\n    FROM public.sensor_measurements\r\n    WHERE\r\n        global_channel = ${Graph_1}\r\n        AND sensor_used = true\r\n        AND valid = true\r\n        AND temperature IS NOT NULL\r\n        AND $__timeFilter(\"time\")\r\n)\r\n\r\nSELECT\r\n    \"time\",\r\n    temperature AS \"value\",\r\n    'temperature' AS \"metric\"\r\nFROM src\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmin AS \"value\",\r\n    'Tmin' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmax AS \"value\",\r\n    'Tmax' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmax IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_twar AS \"value\",\r\n    'Twarn' AS \"metric\"\r\nFROM src\r\nWHERE limit_twar IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tcrit AS \"value\",\r\n    'Tcrit' AS \"metric\"\r\nFROM src\r\nWHERE limit_tcrit IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_temerg AS \"value\",\r\n    'Temerg' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Верхняя граница для красной зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    GREATEST(\r\n        COALESCE(temperature, limit_temerg),\r\n        COALESCE(limit_temerg, temperature)\r\n    ) AS \"value\",\r\n    'Top' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Нижняя граница для синей зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    LEAST(\r\n        COALESCE(temperature, limit_tmin),\r\n        COALESCE(limit_tmin, temperature)\r\n    ) AS \"value\",\r\n    'Bottom' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nORDER BY \"time\";",
+                        "rawSql": "WITH src AS (\r\n    SELECT\r\n        \"time\",\r\n        temperature,\r\n        limit_tmin,\r\n        limit_tmax,\r\n        limit_twar,\r\n        limit_tcrit,\r\n        limit_temerg\r\n    FROM public.sensor_measurements\r\n    WHERE\r\n        global_channel = ${Graph_1}\r\n        AND sensor_used = true\r\n        AND valid = true\r\n        AND temperature IS NOT NULL\r\n        AND $__timeFilter(\"time\")\r\n)\r\n\r\nSELECT\r\n    \"time\",\r\n    temperature AS \"value\",\r\n    'temperature' AS \"metric\"\r\nFROM src\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmin AS \"value\",\r\n    'Tmin' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmax AS \"value\",\r\n    'Tmax' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmax IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_twar AS \"value\",\r\n    'Twarn' AS \"metric\"\r\nFROM src\r\nWHERE limit_twar IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tcrit AS \"value\",\r\n    'Tcrit' AS \"metric\"\r\nFROM src\r\nWHERE limit_tcrit IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_temerg AS \"value\",\r\n    'Temerg' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Верхняя граница для красной зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    GREATEST(\r\n        COALESCE(temperature, limit_temerg),\r\n        COALESCE(limit_temerg, temperature)\r\n    ) AS \"value\",\r\n    'Top' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Нижняя граница для синей зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    LEAST(\r\n        COALESCE(temperature, limit_tmin),\r\n        COALESCE(limit_tmin, temperature)\r\n    ) AS \"value\",\r\n    'Bottom' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nORDER BY \"time\";",
                         "sql": {
                           "columns": [
                             {
@@ -203,7 +199,7 @@
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "text",
+                          "fixedColor": "super-light-yellow",
                           "mode": "fixed"
                         }
                       }
@@ -443,7 +439,7 @@
         "kind": "Panel",
         "spec": {
           "id": 4,
-          "title": "Все активные ДТП",
+          "title": "Все активные ТД",
           "description": "",
           "links": [],
           "data": {
@@ -455,17 +451,19 @@
                   "spec": {
                     "query": {
                       "kind": "DataQuery",
-                      "group": "postgres",
+                      "group": "grafana-postgresql-datasource",
                       "version": "v0",
                       "datasource": {
-                        "name": "elemer-postgres"
+                        "type": "postgres",
+                        "uid": "elemer-postgres",
+                        "name": "Elemer PostgreSQL"
                       },
                       "spec": {
                         "dataset": "elemer_tvi",
                         "editorMode": "code",
                         "format": "table",
                         "rawQuery": true,
-                        "rawSql": "SELECT\n  time_bucket(make_interval(secs => GREATEST(1, ceil($__interval_ms / 50000.0)::int)), \"time\") AS \"time\",\n  avg(temperature) AS \"value\",\n  concat(global_channel, ' - ', sensor_name) AS \"metric\"\nFROM public.sensor_measurements\nWHERE $__timeFilter(\"time\")\n  AND sensor_used = true\n  AND valid = true\n  AND sensor_kind_code = 2\n  AND temperature IS NOT NULL\nGROUP BY 1, global_channel, sensor_name\nORDER BY 1 ASC;",
+                        "rawSql": "SELECT\n  time_bucket(make_interval(secs => GREATEST(1, ceil($__interval_ms / 10000.0)::int)), \"time\") AS \"time\",\n  avg(temperature) AS \"value\",\n  concat(global_channel, ' - ', sensor_name) AS \"metric\"\nFROM public.sensor_measurements\nWHERE $__timeFilter(\"time\")\n  AND sensor_used = true\n  AND valid = true\n  AND sensor_kind_code = 1\n  AND temperature IS NOT NULL\nGROUP BY 1, global_channel, sensor_name\nORDER BY 1 ASC;",
                         "sql": {
                           "columns": [
                             {
@@ -482,6 +480,11 @@
                             }
                           ],
                           "limit": 50
+                        },
+                        "datasource": {
+                          "type": "postgres",
+                          "uid": "elemer-postgres",
+                          "name": "Elemer PostgreSQL"
                         }
                       }
                     },
@@ -582,456 +585,7 @@
                     }
                   }
                 },
-                "overrides": [
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 33 - ДТП 1"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#1f77b4",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 34 - ДТП 2"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#ff7f0e",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 35 - ДТП 3"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#2ca02c",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 36 - ДТП 4"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#d62728",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 37 - ДТП 5"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#9467bd",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 38 - ДТП 6"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#8c564b",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 39 - ДТП 7"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#e377c2",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 40 - ДТП 8"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#7f7f7f",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 41 - ДТП 9"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#bcbd22",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 42 - ДТП 10"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#17becf",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 43 - ДТП 11"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#393b79",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 44 - ДТП 12"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#637939",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 45 - Датчик 45"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#8c6d31",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 46 - Датчик 46"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#843c39",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 47 - Датчик 47"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#7b4173",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "fill": "solid"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "scope": "series",
-                      "options": "value 48 - Датчик 48"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "#3182bd",
-                          "mode": "fixed"
-                        }
-                      },
-                      {
-                        "id": "custom.lineWidth",
-                        "value": 2
-                      },
-                      {
-                        "id": "custom.lineStyle",
-                        "value": {
-                          "dash": [
-                            10,
-                            10
-                          ],
-                          "fill": "dash"
-                        }
-                      }
-                    ]
-                  }
-                ]
+                "overrides": []
               }
             }
           }
@@ -1063,7 +617,7 @@
                         "editorMode": "code",
                         "format": "time_series",
                         "rawQuery": true,
-                        "rawSql": "WITH save_graph_2 AS (\n    INSERT INTO public.grafana_variable_state (dashboard_uid, graph_2, updated_at)\n    VALUES ('adk6m4', ${Graph_2}::integer, now())\n    ON CONFLICT (dashboard_uid) DO UPDATE\n    SET graph_2 = EXCLUDED.graph_2, updated_at = now()\n    RETURNING graph_2\n),\nsrc AS (\r\n    SELECT\r\n        \"time\",\r\n        temperature,\r\n        limit_tmin,\r\n        limit_tmax,\r\n        limit_twar,\r\n        limit_tcrit,\r\n        limit_temerg\r\n    FROM public.sensor_measurements\r\n    WHERE\r\n        global_channel = ${Graph_2}\r\n        AND sensor_used = true\r\n        AND valid = true\r\n        AND temperature IS NOT NULL\r\n        AND $__timeFilter(\"time\")\r\n)\r\n\r\nSELECT\r\n    \"time\",\r\n    temperature AS \"value\",\r\n    'temperature' AS \"metric\"\r\nFROM src\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmin AS \"value\",\r\n    'Tmin' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmax AS \"value\",\r\n    'Tmax' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmax IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_twar AS \"value\",\r\n    'Twarn' AS \"metric\"\r\nFROM src\r\nWHERE limit_twar IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tcrit AS \"value\",\r\n    'Tcrit' AS \"metric\"\r\nFROM src\r\nWHERE limit_tcrit IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_temerg AS \"value\",\r\n    'Temerg' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Верхняя граница для красной зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    GREATEST(\r\n        COALESCE(temperature, limit_temerg),\r\n        COALESCE(limit_temerg, temperature)\r\n    ) AS \"value\",\r\n    'Top' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Нижняя граница для синей зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    LEAST(\r\n        COALESCE(temperature, limit_tmin),\r\n        COALESCE(limit_tmin, temperature)\r\n    ) AS \"value\",\r\n    'Bottom' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nORDER BY \"time\";",
+                        "rawSql": "WITH src AS (\r\n    SELECT\r\n        \"time\",\r\n        temperature,\r\n        limit_tmin,\r\n        limit_tmax,\r\n        limit_twar,\r\n        limit_tcrit,\r\n        limit_temerg\r\n    FROM public.sensor_measurements\r\n    WHERE\r\n        global_channel = ${Graph_2}\r\n        AND sensor_used = true\r\n        AND valid = true\r\n        AND temperature IS NOT NULL\r\n        AND $__timeFilter(\"time\")\r\n)\r\n\r\nSELECT\r\n    \"time\",\r\n    temperature AS \"value\",\r\n    'temperature' AS \"metric\"\r\nFROM src\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmin AS \"value\",\r\n    'Tmin' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tmax AS \"value\",\r\n    'Tmax' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmax IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_twar AS \"value\",\r\n    'Twarn' AS \"metric\"\r\nFROM src\r\nWHERE limit_twar IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_tcrit AS \"value\",\r\n    'Tcrit' AS \"metric\"\r\nFROM src\r\nWHERE limit_tcrit IS NOT NULL\r\n\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    limit_temerg AS \"value\",\r\n    'Temerg' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Верхняя граница для красной зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    GREATEST(\r\n        COALESCE(temperature, limit_temerg),\r\n        COALESCE(limit_temerg, temperature)\r\n    ) AS \"value\",\r\n    'Top' AS \"metric\"\r\nFROM src\r\nWHERE limit_temerg IS NOT NULL\r\n\r\n-- Нижняя граница для синей зоны\r\nUNION ALL\r\n\r\nSELECT\r\n    \"time\",\r\n    LEAST(\r\n        COALESCE(temperature, limit_tmin),\r\n        COALESCE(limit_tmin, temperature)\r\n    ) AS \"value\",\r\n    'Bottom' AS \"metric\"\r\nFROM src\r\nWHERE limit_tmin IS NOT NULL\r\n\r\nORDER BY \"time\";",
                         "sql": {
                           "columns": [
                             {
@@ -1192,7 +746,7 @@
                       {
                         "id": "color",
                         "value": {
-                          "fixedColor": "text",
+                          "fixedColor": "super-light-yellow",
                           "mode": "fixed"
                         }
                       }
@@ -1447,7 +1001,7 @@
                         "x": 0,
                         "y": 0,
                         "width": 24,
-                        "height": 15,
+                        "height": 9,
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-4"
@@ -1458,9 +1012,9 @@
                       "kind": "GridLayoutItem",
                       "spec": {
                         "x": 0,
-                        "y": 15,
+                        "y": 9,
                         "width": 12,
-                        "height": 13,
+                        "height": 8,
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-2"
@@ -1471,9 +1025,9 @@
                       "kind": "GridLayoutItem",
                       "spec": {
                         "x": 12,
-                        "y": 15,
+                        "y": 9,
                         "width": 12,
-                        "height": 13,
+                        "height": 8,
                         "element": {
                           "kind": "ElementReference",
                           "name": "panel-5"
@@ -1491,16 +1045,12 @@
     "links": [],
     "liveNow": true,
     "preload": false,
-    "tags": [
-      "Elemer",
-      "ДТП",
-      "Графики"
-    ],
+    "tags": [],
     "timeSettings": {
       "timezone": "browser",
-      "from": "now-15m",
+      "from": "now-1h",
       "to": "now",
-      "autoRefresh": "1s",
+      "autoRefresh": "auto",
       "autoRefreshIntervals": [
         "1s",
         "5s",
@@ -1510,62 +1060,21 @@
         "5m",
         "15m",
         "30m",
-        "1h"
-      ],
-      "quickRanges": [
-        {
-          "display": "Last 1 minute",
-          "from": "now-1m",
-          "to": "now"
-        },
-        {
-          "display": "Last 5 minutes",
-          "from": "now-5m",
-          "to": "now"
-        },
-        {
-          "display": "Last 15 minutes",
-          "from": "now-15m",
-          "to": "now"
-        },
-        {
-          "display": "Last 30 minutes",
-          "from": "now-30m",
-          "to": "now"
-        },
-        {
-          "display": "Last 1 hour",
-          "from": "now-1h",
-          "to": "now"
-        },
-        {
-          "display": "Last 6 hours",
-          "from": "now-6h",
-          "to": "now"
-        },
-        {
-          "display": "Last 12 hours",
-          "from": "now-12h",
-          "to": "now"
-        },
-        {
-          "display": "Last 24 hours",
-          "from": "now-24h",
-          "to": "now"
-        }
+        "1h",
+        "2h"
       ],
       "hideTimepicker": false,
       "fiscalYearStartMonth": 0
     },
-    "title": "Графики ДТП",
+    "title": "Графики температур",
     "variables": [
       {
         "kind": "QueryVariable",
         "spec": {
           "name": "Graph_1",
           "current": {
-            "text": "",
-            "value": ""
+            "text": "1 - Test",
+            "value": "1"
           },
           "label": "Доп. график 1",
           "hide": "dontHide",
@@ -1576,20 +1085,17 @@
             "group": "grafana-postgresql-datasource",
             "version": "v0",
             "datasource": {
+              "type": "postgres",
+              "uid": "elemer-postgres",
               "name": "Elemer PostgreSQL"
             },
             "spec": {
               "dataset": "elemer_tvi",
-              "datasource": {
-                "name": "Elemer PostgreSQL",
-                "type": "postgres",
-                "uid": "elemer-postgres"
-              },
               "editorMode": "code",
               "format": "table",
-              "query": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(33, 48) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_1 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6m4'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 33) THEN 0 ELSE 1 END,\n  __value;",
+              "query": "SELECT\n  concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n  gs.global_channel AS __value\nFROM generate_series(1, 48) AS gs(global_channel)\nCROSS JOIN LATERAL (\n  SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('????? ', gs.global_channel)) AS sensor_name\n  FROM public.sensor_measurements sm\n  WHERE sm.sensor_used = true\n    AND sm.global_channel = gs.global_channel\n  ORDER BY sm.\"time\" DESC\n  LIMIT 1\n) latest\nORDER BY gs.global_channel;",
               "rawQuery": true,
-              "rawSql": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(33, 48) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_1 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6m4'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 33) THEN 0 ELSE 1 END,\n  __value;",
+              "rawSql": "SELECT\n  concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n  gs.global_channel AS __value\nFROM generate_series(1, 48) AS gs(global_channel)\nCROSS JOIN LATERAL (\n  SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('????? ', gs.global_channel)) AS sensor_name\n  FROM public.sensor_measurements sm\n  WHERE sm.sensor_used = true\n    AND sm.global_channel = gs.global_channel\n  ORDER BY sm.\"time\" DESC\n  LIMIT 1\n) latest\nORDER BY gs.global_channel;",
               "refId": "SQLVariableQueryEditor-VariableQuery",
               "sql": {
                 "columns": [
@@ -1607,17 +1113,22 @@
                   }
                 ],
                 "limit": 50
+              },
+              "datasource": {
+                "type": "postgres",
+                "uid": "elemer-postgres",
+                "name": "Elemer PostgreSQL"
               }
             }
           },
           "regex": "",
           "regexApplyTo": "value",
           "sort": "disabled",
-          "definition": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(33, 48) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_1 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6m4'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 33) THEN 0 ELSE 1 END,\n  __value;",
+          "definition": "SELECT\n  concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n  gs.global_channel AS __value\nFROM generate_series(1, 48) AS gs(global_channel)\nCROSS JOIN LATERAL (\n  SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('????? ', gs.global_channel)) AS sensor_name\n  FROM public.sensor_measurements sm\n  WHERE sm.sensor_used = true\n    AND sm.global_channel = gs.global_channel\n  ORDER BY sm.\"time\" DESC\n  LIMIT 1\n) latest\nORDER BY gs.global_channel;",
           "options": [],
           "multi": false,
           "includeAll": false,
-          "allowCustomValue": false
+          "allowCustomValue": true
         }
       },
       {
@@ -1625,8 +1136,8 @@
         "spec": {
           "name": "Graph_2",
           "current": {
-            "text": "",
-            "value": ""
+            "text": "1 - Test",
+            "value": "1"
           },
           "label": "Доп. график 2",
           "hide": "dontHide",
@@ -1637,20 +1148,17 @@
             "group": "grafana-postgresql-datasource",
             "version": "v0",
             "datasource": {
+              "type": "postgres",
+              "uid": "elemer-postgres",
               "name": "Elemer PostgreSQL"
             },
             "spec": {
               "dataset": "elemer_tvi",
-              "datasource": {
-                "name": "Elemer PostgreSQL",
-                "type": "postgres",
-                "uid": "elemer-postgres"
-              },
               "editorMode": "code",
               "format": "table",
-              "query": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(33, 48) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_2 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6m4'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 33) THEN 0 ELSE 1 END,\n  __value;",
+              "query": "SELECT\n  concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n  gs.global_channel AS __value\nFROM generate_series(1, 48) AS gs(global_channel)\nCROSS JOIN LATERAL (\n  SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('????? ', gs.global_channel)) AS sensor_name\n  FROM public.sensor_measurements sm\n  WHERE sm.sensor_used = true\n    AND sm.global_channel = gs.global_channel\n  ORDER BY sm.\"time\" DESC\n  LIMIT 1\n) latest\nORDER BY gs.global_channel;",
               "rawQuery": true,
-              "rawSql": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(33, 48) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_2 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6m4'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 33) THEN 0 ELSE 1 END,\n  __value;",
+              "rawSql": "SELECT\n  concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n  gs.global_channel AS __value\nFROM generate_series(1, 48) AS gs(global_channel)\nCROSS JOIN LATERAL (\n  SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('????? ', gs.global_channel)) AS sensor_name\n  FROM public.sensor_measurements sm\n  WHERE sm.sensor_used = true\n    AND sm.global_channel = gs.global_channel\n  ORDER BY sm.\"time\" DESC\n  LIMIT 1\n) latest\nORDER BY gs.global_channel;",
               "refId": "SQLVariableQueryEditor-VariableQuery",
               "sql": {
                 "columns": [
@@ -1668,17 +1176,22 @@
                   }
                 ],
                 "limit": 50
+              },
+              "datasource": {
+                "type": "postgres",
+                "uid": "elemer-postgres",
+                "name": "Elemer PostgreSQL"
               }
             }
           },
           "regex": "",
           "regexApplyTo": "value",
           "sort": "disabled",
-          "definition": "WITH choices AS (\n  SELECT\n    concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n    gs.global_channel AS __value\n  FROM generate_series(33, 48) AS gs(global_channel)\n  CROSS JOIN LATERAL (\n    SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('?????? ', gs.global_channel)) AS sensor_name\n    FROM public.sensor_measurements sm\n    WHERE sm.sensor_used = true\n      AND sm.global_channel = gs.global_channel\n    ORDER BY sm.\"time\" DESC\n    LIMIT 1\n  ) latest\n), last_selected AS (\n  SELECT graph_2 AS value\n  FROM public.grafana_variable_state\n  WHERE dashboard_uid = 'adk6m4'\n)\nSELECT __text, __value\nFROM choices\nORDER BY\n  CASE WHEN __value = COALESCE((SELECT value FROM last_selected), 33) THEN 0 ELSE 1 END,\n  __value;",
+          "definition": "SELECT\n  concat(gs.global_channel, ' - ', latest.sensor_name) AS __text,\n  gs.global_channel AS __value\nFROM generate_series(1, 48) AS gs(global_channel)\nCROSS JOIN LATERAL (\n  SELECT COALESCE(NULLIF(sm.sensor_name, ''), concat('????? ', gs.global_channel)) AS sensor_name\n  FROM public.sensor_measurements sm\n  WHERE sm.sensor_used = true\n    AND sm.global_channel = gs.global_channel\n  ORDER BY sm.\"time\" DESC\n  LIMIT 1\n) latest\nORDER BY gs.global_channel;",
           "options": [],
           "multi": false,
           "includeAll": false,
-          "allowCustomValue": false
+          "allowCustomValue": true
         }
       }
     ],
@@ -1690,6 +1203,5 @@
         }
       }
     }
-  },
-  "status": {}
+  }
 }

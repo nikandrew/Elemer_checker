@@ -5,7 +5,7 @@
     "name": "ad2g4b7",
     "namespace": "default",
     "uid": "02ea8b8e-3b86-4eac-b915-93f86d58c57a",
-    "generation": 11,
+    "generation": 19,
     "creationTimestamp": "2026-06-02T07:20:21Z",
     "labels": {
       "grafana.app/deprecatedInternalID": "3564460703776768"
@@ -13,9 +13,14 @@
     "annotations": {
       "grafana.app/createdBy": "user:dfnpuki5l87b4c",
       "grafana.app/folder": "dfnpukwyy1p8gf",
-      "grafana.app/saved-from-ui": "Grafana v13.0.1 (a100054f)",
+      "grafana.app/managedBy": "classic-file-provisioning",
+      "grafana.app/managerAllowsEdits": "true",
+      "grafana.app/managerId": "Elemer",
+      "grafana.app/sourceChecksum": "7a4cfaba463af0610f79a0e1941efe5c",
+      "grafana.app/sourcePath": "/var/lib/grafana/dashboards/ad2g4b7-dashboard.json",
+      "grafana.app/sourceTimestamp": "1781087368000",
       "grafana.app/updatedBy": "user:dfnpuki5l87b4c",
-      "grafana.app/updatedTimestamp": "2026-06-02T09:24:55Z"
+      "grafana.app/updatedTimestamp": "2026-06-10T10:14:10Z"
     }
   },
   "spec": {
@@ -3239,11 +3244,10 @@
                       "links": [],
                       "name": "Element 47",
                       "placement": {
-                        "height": 42.9609375,
-                        "left": 752,
-                        "rotation": 0,
-                        "top": 552,
-                        "width": 180.9609375
+                        "height": 42.94921875,
+                        "left": 998,
+                        "top": 448,
+                        "width": 180.95703125
                       },
                       "type": "metric-value"
                     },
@@ -3279,10 +3283,9 @@
                       "links": [],
                       "name": "Element 48",
                       "placement": {
-                        "height": 35.953125,
-                        "left": 801,
-                        "rotation": 0,
-                        "top": 516,
+                        "height": 35.9375,
+                        "left": 1047,
+                        "top": 412,
                         "width": 131.953125
                       },
                       "type": "metric-value"
@@ -3322,10 +3325,9 @@
                       "links": [],
                       "name": "Element 49",
                       "placement": {
-                        "height": 35.953125,
-                        "left": 752,
-                        "rotation": 0,
-                        "top": 516,
+                        "height": 35.9375,
+                        "left": 998,
+                        "top": 412,
                         "width": 48.984375
                       },
                       "type": "metric-value"
@@ -4323,6 +4325,127 @@
                         "width": 131.953125
                       },
                       "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "field": "sensor_25_color",
+                          "fixed": "#D9D9D9"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 25,
+                        "text": {
+                          "field": "sensor_25_text",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 74",
+                      "placement": {
+                        "height": 42.94921875,
+                        "left": 732,
+                        "top": 552,
+                        "width": 215.99609375
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_25_Name",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 75",
+                      "placement": {
+                        "height": 35.9375,
+                        "left": 781,
+                        "top": 516,
+                        "width": 171.9921875
+                      },
+                      "type": "metric-value"
+                    },
+                    {
+                      "background": {
+                        "color": {
+                          "fixed": "rgb(237, 238, 239)"
+                        },
+                        "image": {
+                          "fixed": ""
+                        }
+                      },
+                      "border": {
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "width": 2
+                      },
+                      "config": {
+                        "align": "center",
+                        "color": {
+                          "fixed": "#000000"
+                        },
+                        "size": 20,
+                        "text": {
+                          "field": "sensor_25_Number",
+                          "fixed": "",
+                          "mode": "field"
+                        },
+                        "valign": "middle"
+                      },
+                      "constraint": {
+                        "horizontal": "left",
+                        "vertical": "top"
+                      },
+                      "links": [],
+                      "name": "Element 76",
+                      "placement": {
+                        "height": 35.9375,
+                        "left": 732,
+                        "top": 516,
+                        "width": 48.984375
+                      },
+                      "type": "metric-value"
                     }
                   ],
                   "name": "Element 1778924429200",
@@ -4542,7 +4665,11 @@
     "links": [],
     "liveNow": false,
     "preload": false,
-    "tags": [],
+    "tags": [
+      "Elemer",
+      "ТД",
+      "Схема"
+    ],
     "timeSettings": {
       "timezone": "browser",
       "from": "now-15m",
@@ -4557,8 +4684,49 @@
         "5m",
         "15m",
         "30m",
-        "1h",
-        "2h"
+        "1h"
+      ],
+      "quickRanges": [
+        {
+          "display": "Last 1 minute",
+          "from": "now-1m",
+          "to": "now"
+        },
+        {
+          "display": "Last 5 minutes",
+          "from": "now-5m",
+          "to": "now"
+        },
+        {
+          "display": "Last 15 minutes",
+          "from": "now-15m",
+          "to": "now"
+        },
+        {
+          "display": "Last 30 minutes",
+          "from": "now-30m",
+          "to": "now"
+        },
+        {
+          "display": "Last 1 hour",
+          "from": "now-1h",
+          "to": "now"
+        },
+        {
+          "display": "Last 6 hours",
+          "from": "now-6h",
+          "to": "now"
+        },
+        {
+          "display": "Last 12 hours",
+          "from": "now-12h",
+          "to": "now"
+        },
+        {
+          "display": "Last 24 hours",
+          "from": "now-24h",
+          "to": "now"
+        }
       ],
       "hideTimepicker": false,
       "fiscalYearStartMonth": 0

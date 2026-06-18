@@ -1,26 +1,22 @@
 {
-  "kind": "Dashboard",
   "apiVersion": "dashboard.grafana.app/v2",
+  "kind": "Dashboard",
   "metadata": {
     "name": "ad2g4bz",
     "namespace": "default",
-    "uid": "e70ade83-3273-4e9a-aa39-a15b3a50eed6",
-    "generation": 4,
-    "creationTimestamp": "2026-06-02T10:37:10Z",
+    "uid": "4d1786f5-705a-4f55-978b-72e494adfb4c",
+    "resourceVersion": "1780057174930018",
+    "generation": 30,
+    "creationTimestamp": "2026-05-16T09:53:52Z",
     "labels": {
-      "grafana.app/deprecatedInternalID": "3613990008889344"
+      "grafana.app/deprecatedInternalID": "1946105739984896"
     },
     "annotations": {
-      "grafana.app/createdBy": "access-policy:service",
-      "grafana.app/folder": "dfnpukwyy1p8gf",
-      "grafana.app/managedBy": "classic-file-provisioning",
-      "grafana.app/managerAllowsEdits": "true",
-      "grafana.app/managerId": "Elemer",
-      "grafana.app/sourceChecksum": "0e28c4d4fab77d9a26541855e327d11c",
-      "grafana.app/sourcePath": "/var/lib/grafana/dashboards/ad2g4bz-dashboard.json",
-      "grafana.app/sourceTimestamp": "1781087368000",
-      "grafana.app/updatedBy": "user:dfnpuki5l87b4c",
-      "grafana.app/updatedTimestamp": "2026-06-10T10:14:21Z"
+      "grafana.app/createdBy": "user:efloadj3nkcn4c",
+      "grafana.app/folder": "",
+      "grafana.app/saved-from-ui": "Grafana v13.0.1 (a100054f21)",
+      "grafana.app/updatedBy": "user:efloadj3nkcn4c",
+      "grafana.app/updatedTimestamp": "2026-05-29T12:19:34Z"
     }
   },
   "spec": {
@@ -74,7 +70,7 @@
                         "editorMode": "code",
                         "format": "table",
                         "rawQuery": true,
-                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_33_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_33_color\",\r\n    COALESCE(sensor_name, 'Датчик 33') AS \"sensor_33_Name\",\r\n    sensor_num AS \"sensor_33_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 33\r\nORDER BY \"time\" DESC\r\nLIMIT 1;",
+                        "rawSql": "SELECT\r\n    CASE\r\n        WHEN now() - \"time\" > interval '30 seconds' THEN\r\n            'Нет данных'\r\n\r\n        WHEN valid = false THEN\r\n            COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n\r\n        ELSE\r\n            ROUND(temperature::numeric, 1)::text || ' Вт/м²'\r\n    END AS \"sensor_01_text\",\r\n\r\n    CASE\r\n        WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n        WHEN valid = false THEN -1\r\n        ELSE color_level\r\n    END AS \"sensor_01_color\",\r\n\r\n    COALESCE(sensor_name, 'Датчик 1') AS \"sensor_01_Name\",\r\n\r\n    sensor_num AS \"sensor_01_Number\"\r\n\r\nFROM public.sensor_measurements\r\nWHERE\r\n    $__timeFilter(\"time\")\r\n    AND sensor_used = true\r\n    AND global_channel = 1\r\nORDER BY \"time\" DESC\r\nLIMIT 1;",
                         "sql": {
                           "columns": [
                             {
@@ -113,7 +109,7 @@
                         "editorMode": "code",
                         "format": "table",
                         "rawQuery": true,
-                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_34_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_34_color\",\r\n    COALESCE(sensor_name, 'Датчик 34') AS \"sensor_34_Name\",\r\n    sensor_num AS \"sensor_34_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 34\r\nORDER BY \"time\" DESC\r\nLIMIT 1;",
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_02_text\",\r\n\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_02_color\",\r\n\r\n    COALESCE(sensor_name, 'Датчик 2') AS \"sensor_02_Name\",\r\n\r\n    sensor_num AS \"sensor_02_Number\"\r\n\r\nFROM public.sensor_measurements\r\nWHERE\r\n    $__timeFilter(\"time\")\r\n    AND sensor_used = true\r\n    AND global_channel = 2\r\nORDER BY \"time\" DESC\r\nLIMIT 1;",
                         "sql": {
                           "columns": [
                             {
@@ -152,7 +148,7 @@
                         "editorMode": "code",
                         "format": "table",
                         "rawQuery": true,
-                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_35_text\",\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_35_color\",\r\n    COALESCE(sensor_name, 'Датчик 35') AS \"sensor_35_Name\",\r\n    sensor_num AS \"sensor_35_Number\"\r\nFROM public.sensor_measurements\r\nWHERE $__timeFilter(\"time\") AND sensor_used = true AND global_channel = 35\r\nORDER BY \"time\" DESC\r\nLIMIT 1;",
+                        "rawSql": "SELECT\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN 'Нет данных'\r\n         WHEN valid = false THEN COALESCE(measurement_error_text, validation_message, 'Ошибка датчика')\r\n         ELSE ROUND(temperature::numeric, 1)::text || ' Вт/м²' END AS \"sensor_07_text\",\r\n\r\n    CASE WHEN now() - \"time\" > interval '30 seconds' THEN -1\r\n         WHEN valid = false THEN -1\r\n         ELSE color_level END AS \"sensor_07_color\",\r\n\r\n    COALESCE(sensor_name, 'Датчик 7') AS \"sensor_07_Name\",\r\n\r\n    sensor_num AS \"sensor_07_Number\"\r\n\r\nFROM public.sensor_measurements\r\nWHERE\r\n    $__timeFilter(\"time\")\r\n    AND sensor_used = true\r\n    AND global_channel = 7\r\nORDER BY \"time\" DESC\r\nLIMIT 1;",
                         "sql": {
                           "columns": [
                             {
@@ -702,7 +698,7 @@
                       "fixed": "transparent"
                     },
                     "image": {
-                      "fixed": "http://localhost:3001/public/img/elemer/Elemer_board_dtp_large_6473667f.png",
+                      "fixed": "/public/img/elemer/Elemer_board_dtp_large.png",
                       "mode": "fixed"
                     },
                     "size": "original"
@@ -721,7 +717,7 @@
                     {
                       "background": {
                         "color": {
-                          "field": "sensor_33_color",
+                          "field": "sensor_01_color",
                           "fixed": "#D9D9D9"
                         }
                       },
@@ -738,7 +734,7 @@
                         },
                         "size": 25,
                         "text": {
-                          "field": "sensor_33_text",
+                          "field": "sensor_01_text",
                           "fixed": "",
                           "mode": "field"
                         },
@@ -751,10 +747,10 @@
                       "links": [],
                       "name": "Element 1",
                       "placement": {
-                        "height": 42.96875,
-                        "left": 974,
-                        "top": 474,
-                        "width": 180.9765625
+                        "height": 42.984375,
+                        "left": 9,
+                        "top": 43,
+                        "width": 180.984375
                       },
                       "type": "metric-value"
                     },
@@ -777,7 +773,7 @@
                         },
                         "size": 20,
                         "text": {
-                          "field": "sensor_33_Name",
+                          "field": "sensor_01_Name",
                           "fixed": "",
                           "mode": "field"
                         },
@@ -790,10 +786,10 @@
                       "links": [],
                       "name": "Element 2",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 1023,
-                        "top": 438,
-                        "width": 131.97265625
+                        "height": 35.96875,
+                        "left": 58,
+                        "top": 7,
+                        "width": 131.984375
                       },
                       "type": "metric-value"
                     },
@@ -819,7 +815,7 @@
                         },
                         "size": 20,
                         "text": {
-                          "field": "sensor_33_Number",
+                          "field": "sensor_01_Number",
                           "fixed": "",
                           "mode": "field"
                         },
@@ -833,9 +829,9 @@
                       "links": [],
                       "name": "Element 3",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 974,
-                        "top": 438,
+                        "height": 35.96875,
+                        "left": 9,
+                        "top": 7,
                         "width": 48.984375
                       },
                       "type": "metric-value"
@@ -843,7 +839,7 @@
                     {
                       "background": {
                         "color": {
-                          "field": "sensor_34_color",
+                          "field": "sensor_07_color",
                           "fixed": "#D9D9D9"
                         }
                       },
@@ -860,7 +856,7 @@
                         },
                         "size": 25,
                         "text": {
-                          "field": "sensor_34_text",
+                          "field": "sensor_07_text",
                           "fixed": "",
                           "mode": "field"
                         },
@@ -873,10 +869,10 @@
                       "links": [],
                       "name": "Element 4",
                       "placement": {
-                        "height": 42.96875,
-                        "left": 1310,
-                        "top": 795,
-                        "width": 180.9765625
+                        "height": 42.984375,
+                        "left": 157,
+                        "top": 324,
+                        "width": 180.984375
                       },
                       "type": "metric-value"
                     },
@@ -902,7 +898,7 @@
                         },
                         "size": 20,
                         "text": {
-                          "field": "sensor_34_Number",
+                          "field": "sensor_07_Number",
                           "fixed": "",
                           "mode": "field"
                         },
@@ -915,9 +911,9 @@
                       "links": [],
                       "name": "Element 5",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 1310,
-                        "top": 759,
+                        "height": 35.96875,
+                        "left": 157,
+                        "top": 288,
                         "width": 48.984375
                       },
                       "type": "metric-value"
@@ -925,7 +921,7 @@
                     {
                       "background": {
                         "color": {
-                          "field": "sensor_35_color",
+                          "field": "sensor_02_color",
                           "fixed": "#D9D9D9"
                         }
                       },
@@ -942,7 +938,7 @@
                         },
                         "size": 25,
                         "text": {
-                          "field": "sensor_35_text",
+                          "field": "sensor_02_text",
                           "fixed": "",
                           "mode": "field"
                         },
@@ -955,10 +951,10 @@
                       "links": [],
                       "name": "Element 7",
                       "placement": {
-                        "height": 42.96875,
-                        "left": 974,
+                        "height": 42.984375,
+                        "left": 364,
                         "top": 43,
-                        "width": 180.9765625
+                        "width": 180.984375
                       },
                       "type": "metric-value"
                     },
@@ -984,7 +980,7 @@
                         },
                         "size": 20,
                         "text": {
-                          "field": "sensor_35_Number",
+                          "field": "sensor_02_Number",
                           "fixed": "",
                           "mode": "field"
                         },
@@ -997,8 +993,8 @@
                       "links": [],
                       "name": "Element 8",
                       "placement": {
-                        "height": 35.9375,
-                        "left": 974,
+                        "height": 35.96875,
+                        "left": 364,
                         "top": 7,
                         "width": 48.984375
                       },
@@ -1023,7 +1019,7 @@
                         },
                         "size": 20,
                         "text": {
-                          "field": "sensor_35_Name",
+                          "field": "sensor_02_Name",
                           "fixed": "",
                           "mode": "field"
                         },
@@ -1036,10 +1032,10 @@
                       "links": [],
                       "name": "Element 9",
                       "placement": {
-                        "height": 35.9375,
-                        "left": 1023,
+                        "height": 35.96875,
+                        "left": 413,
                         "top": 7,
-                        "width": 131.97265625
+                        "width": 131.984375
                       },
                       "type": "metric-value"
                     },
@@ -1076,10 +1072,10 @@
                       "links": [],
                       "name": "Element 10",
                       "placement": {
-                        "height": 42.968711853027344,
-                        "left": 1310,
-                        "top": 374,
-                        "width": 180.9765625
+                        "height": 42.984375,
+                        "left": 648,
+                        "top": 324,
+                        "width": 180.984375
                       },
                       "type": "metric-value"
                     },
@@ -1118,9 +1114,9 @@
                       "links": [],
                       "name": "Element 11",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 1310,
-                        "top": 338,
+                        "height": 35.96875,
+                        "left": 648,
+                        "top": 288,
                         "width": 48.984375
                       },
                       "type": "metric-value"
@@ -1157,10 +1153,10 @@
                       "links": [],
                       "name": "Element 12",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 1359,
-                        "top": 338,
-                        "width": 131.97265625
+                        "height": 35.96875,
+                        "left": 697,
+                        "top": 288,
+                        "width": 131.984375
                       },
                       "type": "metric-value"
                     },
@@ -1198,10 +1194,10 @@
                       "links": [],
                       "name": "Element 13",
                       "placement": {
-                        "height": 42.96875,
-                        "left": 413,
+                        "height": 42.984375,
+                        "left": 851,
                         "top": 43,
-                        "width": 180.9765625
+                        "width": 180.984375
                       },
                       "type": "metric-value"
                     },
@@ -1240,8 +1236,8 @@
                       "links": [],
                       "name": "Element 14",
                       "placement": {
-                        "height": 35.95705032348633,
-                        "left": 413,
+                        "height": 35.96875,
+                        "left": 851,
                         "top": 7,
                         "width": 48.984375
                       },
@@ -1280,10 +1276,10 @@
                       "links": [],
                       "name": "Element 15",
                       "placement": {
-                        "height": 35.95705032348633,
-                        "left": 462,
+                        "height": 35.96875,
+                        "left": 900,
                         "top": 7,
-                        "width": 131.97265625
+                        "width": 131.984375
                       },
                       "type": "metric-value"
                     },
@@ -1320,10 +1316,10 @@
                       "links": [],
                       "name": "Element 16",
                       "placement": {
-                        "height": 42.94921875,
-                        "left": 763,
-                        "top": 374,
-                        "width": 180.95703125
+                        "height": 42.96875,
+                        "left": 1131,
+                        "top": 324,
+                        "width": 180.96875
                       },
                       "type": "metric-value"
                     },
@@ -1363,9 +1359,9 @@
                       "links": [],
                       "name": "Element 17",
                       "placement": {
-                        "height": 35.9375,
-                        "left": 763,
-                        "top": 338,
+                        "height": 35.953125,
+                        "left": 1131,
+                        "top": 288,
                         "width": 48.984375
                       },
                       "type": "metric-value"
@@ -1403,10 +1399,10 @@
                       "links": [],
                       "name": "Element 18",
                       "placement": {
-                        "height": 35.9375,
-                        "left": 812,
-                        "top": 338,
-                        "width": 131.97265625
+                        "height": 35.953125,
+                        "left": 1180,
+                        "top": 288,
+                        "width": 131.984375
                       },
                       "type": "metric-value"
                     },
@@ -1443,10 +1439,10 @@
                       "links": [],
                       "name": "Element 19",
                       "placement": {
-                        "height": 42.94921875,
-                        "left": 413,
-                        "top": 474,
-                        "width": 180.9765625
+                        "height": 42.984375,
+                        "left": 9,
+                        "top": 417,
+                        "width": 180.984375
                       },
                       "type": "metric-value"
                     },
@@ -1485,9 +1481,9 @@
                       "links": [],
                       "name": "Element 20",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 413,
-                        "top": 438,
+                        "height": 35.96875,
+                        "left": 9,
+                        "top": 381,
                         "width": 48.984375
                       },
                       "type": "metric-value"
@@ -1524,10 +1520,10 @@
                       "links": [],
                       "name": "Element 21",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 462,
-                        "top": 438,
-                        "width": 131.97265625
+                        "height": 35.96875,
+                        "left": 58,
+                        "top": 381,
+                        "width": 131.984375
                       },
                       "type": "metric-value"
                     },
@@ -1567,10 +1563,10 @@
                       "links": [],
                       "name": "Element 22",
                       "placement": {
-                        "height": 42.96875,
-                        "left": 763,
-                        "top": 795,
-                        "width": 180.9765625
+                        "height": 42.984375,
+                        "left": 157,
+                        "top": 702,
+                        "width": 180.984375
                       },
                       "type": "metric-value"
                     },
@@ -1609,9 +1605,9 @@
                       "links": [],
                       "name": "Element 23",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 763,
-                        "top": 759,
+                        "height": 35.96875,
+                        "left": 157,
+                        "top": 666,
                         "width": 48.984375
                       },
                       "type": "metric-value"
@@ -1648,10 +1644,10 @@
                       "links": [],
                       "name": "Element 24",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 812,
-                        "top": 759,
-                        "width": 131.97265625
+                        "height": 35.96875,
+                        "left": 206,
+                        "top": 666,
+                        "width": 131.984375
                       },
                       "type": "metric-value"
                     },
@@ -1688,10 +1684,10 @@
                       "links": [],
                       "name": "Element 25",
                       "placement": {
-                        "height": 42.96875,
-                        "left": 206,
-                        "top": 795,
-                        "width": 180.9765625
+                        "height": 42.984375,
+                        "left": 364,
+                        "top": 420,
+                        "width": 180.984375
                       },
                       "type": "metric-value"
                     },
@@ -1730,9 +1726,9 @@
                       "links": [],
                       "name": "Element 26",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 206,
-                        "top": 759,
+                        "height": 35.96875,
+                        "left": 364,
+                        "top": 384,
                         "width": 48.984375
                       },
                       "type": "metric-value"
@@ -1769,10 +1765,10 @@
                       "links": [],
                       "name": "Element 27",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 255,
-                        "top": 759,
-                        "width": 131.97265625
+                        "height": 35.96875,
+                        "left": 413,
+                        "top": 384,
+                        "width": 131.984375
                       },
                       "type": "metric-value"
                     },
@@ -1809,10 +1805,10 @@
                       "links": [],
                       "name": "Element 28",
                       "placement": {
-                        "height": 42.96875,
-                        "left": 9,
-                        "top": 474,
-                        "width": 180.9765625
+                        "height": 42.984375,
+                        "left": 648,
+                        "top": 702,
+                        "width": 180.984375
                       },
                       "type": "metric-value"
                     },
@@ -1851,9 +1847,9 @@
                       "links": [],
                       "name": "Element 29",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 9,
-                        "top": 438,
+                        "height": 35.96875,
+                        "left": 648,
+                        "top": 666,
                         "width": 48.984375
                       },
                       "type": "metric-value"
@@ -1890,10 +1886,10 @@
                       "links": [],
                       "name": "Element 30",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 58,
-                        "top": 438,
-                        "width": 131.97265625
+                        "height": 35.96875,
+                        "left": 697,
+                        "top": 666,
+                        "width": 131.984375
                       },
                       "type": "metric-value"
                     },
@@ -1930,10 +1926,10 @@
                       "links": [],
                       "name": "Element 31",
                       "placement": {
-                        "height": 42.96875,
-                        "left": 206,
-                        "top": 375,
-                        "width": 180.9765625
+                        "height": 42.984375,
+                        "left": 851,
+                        "top": 420,
+                        "width": 180.984375
                       },
                       "type": "metric-value"
                     },
@@ -1972,9 +1968,9 @@
                       "links": [],
                       "name": "Element 32",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 206,
-                        "top": 338,
+                        "height": 35.96875,
+                        "left": 851,
+                        "top": 384,
                         "width": 48.984375
                       },
                       "type": "metric-value"
@@ -2011,10 +2007,10 @@
                       "links": [],
                       "name": "Element 33",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 255,
-                        "top": 338,
-                        "width": 131.97265625
+                        "height": 35.96875,
+                        "left": 900,
+                        "top": 384,
+                        "width": 131.984375
                       },
                       "type": "metric-value"
                     },
@@ -2052,9 +2048,9 @@
                       "name": "Element 34",
                       "placement": {
                         "height": 42.96875,
-                        "left": 9,
-                        "top": 43,
-                        "width": 180.95703125
+                        "left": 1131,
+                        "top": 699,
+                        "width": 180.96875
                       },
                       "type": "metric-value"
                     },
@@ -2094,9 +2090,9 @@
                       "links": [],
                       "name": "Element 35",
                       "placement": {
-                        "height": 35.93751907348633,
-                        "left": 9,
-                        "top": 7,
+                        "height": 35.953125,
+                        "left": 1131,
+                        "top": 663,
                         "width": 48.984375
                       },
                       "type": "metric-value"
@@ -2133,10 +2129,10 @@
                       "links": [],
                       "name": "Element 36",
                       "placement": {
-                        "height": 35.93751907348633,
-                        "left": 58,
-                        "top": 7,
-                        "width": 131.97265625
+                        "height": 35.953125,
+                        "left": 1180,
+                        "top": 663,
+                        "width": 131.984375
                       },
                       "type": "metric-value"
                     },
@@ -2159,7 +2155,7 @@
                         },
                         "size": 20,
                         "text": {
-                          "field": "sensor_34_Name",
+                          "field": "sensor_07_Name",
                           "fixed": "",
                           "mode": "field"
                         },
@@ -2172,10 +2168,10 @@
                       "links": [],
                       "name": "Element 37",
                       "placement": {
-                        "height": 35.95703125,
-                        "left": 1359,
-                        "top": 759,
-                        "width": 131.97265625
+                        "height": 35.96875,
+                        "left": 206,
+                        "top": 288,
+                        "width": 131.984375
                       },
                       "type": "metric-value"
                     }
@@ -2397,16 +2393,12 @@
     "links": [],
     "liveNow": false,
     "preload": false,
-    "tags": [
-      "Elemer",
-      "ДТП",
-      "Схема"
-    ],
+    "tags": [],
     "timeSettings": {
       "timezone": "browser",
-      "from": "now-15m",
+      "from": "now-6h",
       "to": "now",
-      "autoRefresh": "1s",
+      "autoRefresh": "auto",
       "autoRefreshIntervals": [
         "1s",
         "5s",
@@ -2416,49 +2408,8 @@
         "5m",
         "15m",
         "30m",
-        "1h"
-      ],
-      "quickRanges": [
-        {
-          "display": "Last 1 minute",
-          "from": "now-1m",
-          "to": "now"
-        },
-        {
-          "display": "Last 5 minutes",
-          "from": "now-5m",
-          "to": "now"
-        },
-        {
-          "display": "Last 15 minutes",
-          "from": "now-15m",
-          "to": "now"
-        },
-        {
-          "display": "Last 30 minutes",
-          "from": "now-30m",
-          "to": "now"
-        },
-        {
-          "display": "Last 1 hour",
-          "from": "now-1h",
-          "to": "now"
-        },
-        {
-          "display": "Last 6 hours",
-          "from": "now-6h",
-          "to": "now"
-        },
-        {
-          "display": "Last 12 hours",
-          "from": "now-12h",
-          "to": "now"
-        },
-        {
-          "display": "Last 24 hours",
-          "from": "now-24h",
-          "to": "now"
-        }
+        "1h",
+        "2h"
       ],
       "hideTimepicker": false,
       "fiscalYearStartMonth": 0
@@ -2473,6 +2424,5 @@
         }
       }
     }
-  },
-  "status": {}
+  }
 }
