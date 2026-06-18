@@ -1,0 +1,10 @@
+{
+  "calculation_mode": "complex",
+  "alpha": 0.5,
+  "fast_window_s": 5.0,
+  "turn_search_window_s": 10.0,
+  "display_window_s": 30.0,
+  "v_min_deg_c_min": 0.2,
+  "filter_mode": "median",
+  "display_method": "linear"
+}

@@ -81,8 +81,10 @@ Start services:
 
 ```powershell
 cd C:\Nikitin\Soft\Elemer_checker
-docker compose up -d
+.\start_services.bat
 ```
+
+The helper batch files switch to their own folder before running commands, so they also work when launched by double-clicking in Windows Explorer.
 
 Open Grafana with the credentials from `.env` or `.env.example`:
 
@@ -101,6 +103,17 @@ cd C:\Nikitin\Soft\Elemer_checker
 python -m pip install -r requirements.txt
 python element_checker.py
 ```
+
+## Build Distribution Package
+
+Run the package builder from the repository root and pass the target version:
+
+```powershell
+cd C:\Nikitin\Soft\Elemer_checker
+powershell -ExecutionPolicy Bypass -File .\build_package.ps1 -Version 1.7
+```
+
+The script rebuilds both executables, creates `dist\Elemer_checker_package_v.<version>.zip`, moves older `dist` artifacts to `dist\backup`, excludes `postgres-data`, and includes Grafana dashboards plus a safe SQLite snapshot of `grafana-data\grafana.db`.
 
 Each device panel has 16 telemetry buttons. Buttons read sensor channels from holding registers:
 

@@ -71,6 +71,7 @@ SENSOR_TYPE_BASE_ADDRESS = 0x0860
 DEVICE_COUNT = 3
 SETTINGS_FILE = "element_checker_settings.xlsx"
 CHANNEL_SETTINGS_FILE = "channel_settings.json"
+RATE_SETTINGS_FILE = "temperature_rate_settings.json"
 DB_TABLE_NAME = "sensor_measurements"
 DB_INSERT_BATCH_SIZE = 200
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
@@ -178,6 +179,11 @@ class TelemetryMeasurement:
     emissivity: float | None
     raw_temperature: float | None
     temperature: float | None
+    filtered_temperature: float | None
+    temperature_rate_fast: float | None
+    temperature_rate_display: float | None
+    temperature_rate_state_code: int | None
+    temperature_rate_reversal: bool
     error_code: int | None
     error_text: str
     timer_code: int | None
@@ -186,6 +192,48 @@ class TelemetryMeasurement:
     valid: bool
     validation_message: str
     raw_response: str
+
+
+@dataclass
+class TemperatureRateSettings:
+    calculation_mode: str = "complex"
+    alpha: float = 0.5
+    fast_window_s: float = 5.0
+    turn_search_window_s: float = 10.0
+    display_window_s: float = 30.0
+    v_min_deg_c_min: float = 0.2
+    filter_mode: str = "median"
+    display_method: str = "linear"
+
+
+@dataclass
+class TemperatureRateSample:
+    timestamp: datetime
+    raw_temperature: float
+    filtered_temperature: float
+
+
+@dataclass
+class TemperatureRateResult:
+    filtered_temperature: float | None = None
+    fast_rate_deg_c_min: float | None = None
+    display_rate_deg_c_min: float | None = None
+    state_code: int | None = None
+    reversal: bool = False
+
+
+@dataclass
+class TemperatureRateChannelState:
+    raw_values: list[float]
+    samples: list[TemperatureRateSample]
+    ema_temperature: float | None = None
+    state_code: int = 0
+    last_turn_time: datetime | None = None
+
+
+RATE_STATE_STABLE = 0
+RATE_STATE_HEATING = 1
+RATE_STATE_COOLING = -1
 
 
 MEASUREMENT_ERROR_TEXT = {
@@ -384,6 +432,250 @@ def load_env_file(path: Path) -> None:
         pass
 
 
+def _finite_float(value: object, default: float) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return default
+    return result if math.isfinite(result) else default
+
+
+def load_temperature_rate_settings(path: Path) -> TemperatureRateSettings:
+    defaults = TemperatureRateSettings()
+    if not path.exists():
+        return defaults
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return defaults
+    if not isinstance(payload, dict):
+        return defaults
+    settings = TemperatureRateSettings(
+        calculation_mode=str(payload.get("calculation_mode") or defaults.calculation_mode),
+        alpha=_finite_float(payload.get("alpha"), defaults.alpha),
+        fast_window_s=_finite_float(payload.get("fast_window_s"), defaults.fast_window_s),
+        turn_search_window_s=_finite_float(payload.get("turn_search_window_s"), defaults.turn_search_window_s),
+        display_window_s=_finite_float(payload.get("display_window_s"), defaults.display_window_s),
+        v_min_deg_c_min=_finite_float(payload.get("v_min_deg_c_min"), defaults.v_min_deg_c_min),
+        filter_mode=str(payload.get("filter_mode") or defaults.filter_mode),
+        display_method=str(payload.get("display_method") or defaults.display_method),
+    )
+    try:
+        validate_temperature_rate_settings(settings)
+    except ValueError:
+        return defaults
+    return settings
+
+
+def save_temperature_rate_settings(path: Path, settings: TemperatureRateSettings) -> None:
+    validate_temperature_rate_settings(settings)
+    path.write_text(json.dumps(asdict(settings), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def validate_temperature_rate_settings(settings: TemperatureRateSettings) -> None:
+    if settings.calculation_mode not in {"simple", "complex"}:
+        raise ValueError("Метод расчета скорости должен быть simple или complex")
+    if not 0 < settings.alpha <= 1:
+        raise ValueError("Коэффициент alpha должен быть в диапазоне 0..1")
+    if settings.fast_window_s <= 0:
+        raise ValueError("Короткое окно должно быть больше 0 секунд")
+    if settings.turn_search_window_s <= 0:
+        raise ValueError("Окно поиска разворота должно быть больше 0 секунд")
+    if settings.display_window_s <= 0:
+        raise ValueError("Окно отображаемой скорости должно быть больше 0 секунд")
+    if settings.v_min_deg_c_min < 0:
+        raise ValueError("Мертвая зона скорости не может быть отрицательной")
+    if settings.filter_mode not in {"median", "average"}:
+        raise ValueError("Фильтр температуры должен быть median или average")
+    if settings.display_method not in {"linear", "delta"}:
+        raise ValueError("Метод отображаемой скорости должен быть linear или delta")
+
+
+def _linear_rate_deg_c_min(samples: list[TemperatureRateSample]) -> float | None:
+    if len(samples) < 2:
+        return None
+    t0 = samples[0].timestamp
+    xs = [(sample.timestamp - t0).total_seconds() for sample in samples]
+    ys = [sample.filtered_temperature for sample in samples]
+    x_mean = sum(xs) / len(xs)
+    y_mean = sum(ys) / len(ys)
+    denominator = sum((x - x_mean) ** 2 for x in xs)
+    if denominator <= 0:
+        return None
+    slope_deg_c_s = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys)) / denominator
+    return slope_deg_c_s * 60.0
+
+
+class TemperatureRateCalculator:
+    def __init__(self, settings: TemperatureRateSettings) -> None:
+        self.settings = settings
+        self.states = [
+            [TemperatureRateChannelState(raw_values=[], samples=[]) for _channel in range(TELEMETRY_CHANNELS)]
+            for _device in range(DEVICE_COUNT)
+        ]
+
+    def update_settings(self, settings: TemperatureRateSettings) -> None:
+        validate_temperature_rate_settings(settings)
+        self.settings = settings
+
+    def reset(self) -> None:
+        for device_states in self.states:
+            for state in device_states:
+                state.raw_values.clear()
+                state.samples.clear()
+                state.ema_temperature = None
+                state.state_code = RATE_STATE_STABLE
+                state.last_turn_time = None
+
+    def add_sample(self, device_index: int, channel: int, timestamp: datetime, temperature: float) -> TemperatureRateResult:
+        settings = self.settings
+        state = self.states[device_index][channel - 1]
+        if settings.calculation_mode == "simple":
+            return self._add_simple_sample(state, timestamp, temperature, settings)
+
+        state.raw_values.append(temperature)
+        del state.raw_values[:-3]
+
+        if settings.filter_mode == "average":
+            prefiltered = sum(state.raw_values) / len(state.raw_values)
+        else:
+            ordered = sorted(state.raw_values)
+            prefiltered = ordered[len(ordered) // 2]
+
+        if state.ema_temperature is None:
+            filtered = prefiltered
+        else:
+            filtered = settings.alpha * prefiltered + (1.0 - settings.alpha) * state.ema_temperature
+        state.ema_temperature = filtered
+
+        sample = TemperatureRateSample(timestamp=timestamp, raw_temperature=temperature, filtered_temperature=filtered)
+        state.samples.append(sample)
+        max_window_s = max(settings.fast_window_s, settings.turn_search_window_s, settings.display_window_s) + 5.0
+        cutoff = timestamp - timedelta(seconds=max_window_s)
+        state.samples = [item for item in state.samples if item.timestamp >= cutoff]
+
+        fast_rate = self._rate_between(timestamp, filtered, state.samples, settings.fast_window_s)
+        new_state = self._state_from_rate(fast_rate, settings.v_min_deg_c_min)
+        reversal = False
+        if state.state_code == RATE_STATE_HEATING and new_state == RATE_STATE_COOLING:
+            turn_sample = self._turn_sample(state.samples, timestamp, settings.turn_search_window_s, maximum=True)
+            state.last_turn_time = turn_sample.timestamp if turn_sample is not None else timestamp
+            reversal = True
+        elif state.state_code == RATE_STATE_COOLING and new_state == RATE_STATE_HEATING:
+            turn_sample = self._turn_sample(state.samples, timestamp, settings.turn_search_window_s, maximum=False)
+            state.last_turn_time = turn_sample.timestamp if turn_sample is not None else timestamp
+            reversal = True
+        if new_state != RATE_STATE_STABLE:
+            state.state_code = new_state
+
+        display_rate = self._display_rate(state.samples, timestamp, state.last_turn_time, settings)
+        return TemperatureRateResult(
+            filtered_temperature=filtered,
+            fast_rate_deg_c_min=fast_rate,
+            display_rate_deg_c_min=display_rate,
+            state_code=state.state_code,
+            reversal=reversal,
+        )
+
+    def _add_simple_sample(
+        self,
+        state: TemperatureRateChannelState,
+        timestamp: datetime,
+        temperature: float,
+        settings: TemperatureRateSettings,
+    ) -> TemperatureRateResult:
+        sample = TemperatureRateSample(timestamp=timestamp, raw_temperature=temperature, filtered_temperature=temperature)
+        state.samples.append(sample)
+        cutoff = timestamp - timedelta(seconds=settings.display_window_s + 30.0)
+        state.samples = [item for item in state.samples if item.timestamp >= cutoff]
+
+        latest_samples = [item for item in state.samples if item.timestamp <= timestamp][-5:]
+        target_time = timestamp - timedelta(seconds=settings.display_window_s)
+        previous_samples = [item for item in state.samples if item.timestamp <= target_time][-5:]
+        rate = self._average_delta_rate(latest_samples, previous_samples)
+        state.state_code = self._state_from_rate(rate, 0.0)
+        return TemperatureRateResult(
+            filtered_temperature=temperature,
+            fast_rate_deg_c_min=rate,
+            display_rate_deg_c_min=rate,
+            state_code=state.state_code,
+            reversal=False,
+        )
+
+    def _rate_between(
+        self,
+        timestamp: datetime,
+        filtered_temperature: float,
+        samples: list[TemperatureRateSample],
+        window_s: float,
+    ) -> float | None:
+        target = timestamp - timedelta(seconds=window_s)
+        previous = next((sample for sample in samples if sample.timestamp >= target), None)
+        if previous is None or previous.timestamp >= timestamp:
+            return None
+        dt_s = (timestamp - previous.timestamp).total_seconds()
+        if dt_s <= 0:
+            return None
+        return (filtered_temperature - previous.filtered_temperature) / dt_s * 60.0
+
+    def _state_from_rate(self, rate: float | None, deadband: float) -> int:
+        if rate is None or abs(rate) <= deadband:
+            return RATE_STATE_STABLE
+        return RATE_STATE_HEATING if rate > 0 else RATE_STATE_COOLING
+
+    def _average_delta_rate(
+        self,
+        latest_samples: list[TemperatureRateSample],
+        previous_samples: list[TemperatureRateSample],
+    ) -> float | None:
+        if len(latest_samples) < 5 or len(previous_samples) < 5:
+            return None
+        latest_time = sum(sample.timestamp.timestamp() for sample in latest_samples) / len(latest_samples)
+        previous_time = sum(sample.timestamp.timestamp() for sample in previous_samples) / len(previous_samples)
+        dt_s = latest_time - previous_time
+        if dt_s <= 0:
+            return None
+        latest_temperature = sum(sample.raw_temperature for sample in latest_samples) / len(latest_samples)
+        previous_temperature = sum(sample.raw_temperature for sample in previous_samples) / len(previous_samples)
+        return (latest_temperature - previous_temperature) / dt_s * 60.0
+
+    def _turn_sample(
+        self,
+        samples: list[TemperatureRateSample],
+        timestamp: datetime,
+        window_s: float,
+        maximum: bool,
+    ) -> TemperatureRateSample | None:
+        cutoff = timestamp - timedelta(seconds=window_s)
+        candidates = [sample for sample in samples if sample.timestamp >= cutoff]
+        if not candidates:
+            return None
+        key = lambda sample: sample.filtered_temperature
+        return max(candidates, key=key) if maximum else min(candidates, key=key)
+
+    def _display_rate(
+        self,
+        samples: list[TemperatureRateSample],
+        timestamp: datetime,
+        last_turn_time: datetime | None,
+        settings: TemperatureRateSettings,
+    ) -> float | None:
+        start_time = timestamp - timedelta(seconds=settings.display_window_s)
+        if last_turn_time is not None and last_turn_time > start_time:
+            start_time = last_turn_time
+        window_samples = [sample for sample in samples if sample.timestamp >= start_time]
+        if len(window_samples) < 2:
+            return None
+        if settings.display_method == "delta":
+            first = window_samples[0]
+            last = window_samples[-1]
+            dt_s = (last.timestamp - first.timestamp).total_seconds()
+            if dt_s <= 0:
+                return None
+            return (last.filtered_temperature - first.filtered_temperature) / dt_s * 60.0
+        return _linear_rate_deg_c_min(window_samples)
+
+
 class TimescaleMeasurementWriter:
     def __init__(self, log_callback) -> None:
         self.log_callback = log_callback
@@ -577,6 +869,11 @@ class TimescaleMeasurementWriter:
                     emissivity DOUBLE PRECISION,
                     raw_temperature DOUBLE PRECISION,
                     temperature DOUBLE PRECISION,
+                    filtered_temperature DOUBLE PRECISION,
+                    temperature_rate_fast DOUBLE PRECISION,
+                    temperature_rate_display DOUBLE PRECISION,
+                    temperature_rate_state_code INTEGER,
+                    temperature_rate_reversal BOOLEAN NOT NULL DEFAULT FALSE,
                     measurement_error_code INTEGER,
                     measurement_error_text TEXT,
                     timer_code INTEGER,
@@ -641,6 +938,33 @@ class TimescaleMeasurementWriter:
                 f"ALTER TABLE {DB_TABLE_NAME} "
                 "ADD COLUMN IF NOT EXISTS raw_temperature DOUBLE PRECISION"
             )
+            for column_name in ("filtered_temperature", "temperature_rate_fast", "temperature_rate_display"):
+                cursor.execute(
+                    f"ALTER TABLE {DB_TABLE_NAME} "
+                    f"ADD COLUMN IF NOT EXISTS {column_name} DOUBLE PRECISION"
+                )
+            cursor.execute(
+                f"ALTER TABLE {DB_TABLE_NAME} "
+                "ADD COLUMN IF NOT EXISTS temperature_rate_state_code INTEGER"
+            )
+            cursor.execute(
+                f"ALTER TABLE {DB_TABLE_NAME} "
+                "ADD COLUMN IF NOT EXISTS temperature_rate_reversal BOOLEAN NOT NULL DEFAULT FALSE"
+            )
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_NAME}_temperature_rate_latest "
+                f"ON {DB_TABLE_NAME} (global_channel, time DESC) "
+                f"INCLUDE (sensor_name, temperature_rate_display) "
+                f"WHERE sensor_used = true AND valid = true AND sensor_kind_code = 1 "
+                f"AND temperature_rate_display IS NOT NULL"
+            )
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_NAME}_heat_flux_rate_latest "
+                f"ON {DB_TABLE_NAME} (global_channel, time DESC) "
+                f"INCLUDE (sensor_name, temperature) "
+                f"WHERE sensor_used = true AND valid = true AND sensor_kind_code = 2 "
+                f"AND temperature IS NOT NULL"
+            )
         connection.commit()
 
         if timescaledb_available:
@@ -689,6 +1013,11 @@ class TimescaleMeasurementWriter:
                 item.emissivity,
                 item.raw_temperature,
                 item.temperature,
+                item.filtered_temperature,
+                item.temperature_rate_fast,
+                item.temperature_rate_display,
+                item.temperature_rate_state_code,
+                item.temperature_rate_reversal,
                 item.error_code,
                 item.error_text,
                 item.timer_code,
@@ -709,7 +1038,9 @@ class TimescaleMeasurementWriter:
                         time, device_index, device_label, slave_addr, channel, global_channel,
                         sensor_num, sensor_name, sensor_used, limit_tmin, limit_tmax,
                         limit_twar, limit_tcrit, limit_temerg, color_level, sensor_kind_code,
-                        calibration_a, calibration_b, emissivity, raw_temperature, temperature, measurement_error_code,
+                        calibration_a, calibration_b, emissivity, raw_temperature, temperature,
+                        filtered_temperature, temperature_rate_fast, temperature_rate_display,
+                        temperature_rate_state_code, temperature_rate_reversal, measurement_error_code,
                         measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
                         valid, validation_message, raw_response
                     ) VALUES %s
@@ -723,11 +1054,13 @@ class TimescaleMeasurementWriter:
                         time, device_index, device_label, slave_addr, channel, global_channel,
                         sensor_num, sensor_name, sensor_used, limit_tmin, limit_tmax,
                         limit_twar, limit_tcrit, limit_temerg, color_level, sensor_kind_code,
-                        calibration_a, calibration_b, emissivity, raw_temperature, temperature, measurement_error_code,
+                        calibration_a, calibration_b, emissivity, raw_temperature, temperature,
+                        filtered_temperature, temperature_rate_fast, temperature_rate_display,
+                        temperature_rate_state_code, temperature_rate_reversal, measurement_error_code,
                         measurement_error_text, timer_code, sensor_type_code, sensor_type_text,
                         valid, validation_message, raw_response
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     """,
                     rows,
@@ -1229,6 +1562,7 @@ class ElementCheckerApp(tk.Tk):
         self.temperature_history: list[list[list[float]]] = [[[] for _channel in range(TELEMETRY_CHANNELS)] for _device in range(DEVICE_COUNT)]
         self.sensor_type_cache: list[list[int | None]] = [[None for _channel in range(TELEMETRY_CHANNELS)] for _device in range(DEVICE_COUNT)]
         self.settings_window: tk.Toplevel | None = None
+        self.rate_settings_window: tk.Toplevel | None = None
         self.engineering_window: tk.Toplevel | None = None
         self.logs_window: tk.Toplevel | None = None
         self.user_actions_window: tk.Toplevel | None = None
@@ -1258,6 +1592,9 @@ class ElementCheckerApp(tk.Tk):
                 else channel_settings_warning
             )
         load_env_file(APP_DIR / ".env")
+        self.rate_settings_path = APP_DIR / RATE_SETTINGS_FILE
+        self.rate_settings = load_temperature_rate_settings(self.rate_settings_path)
+        self.temperature_rate_calculator = TemperatureRateCalculator(self.rate_settings)
         self.db_writer = TimescaleMeasurementWriter(lambda message: self.ui_queue.put(("log", message)))
         self.db_writer.start()
 
@@ -1270,6 +1607,14 @@ class ElementCheckerApp(tk.Tk):
         self.device_speed_var = tk.StringVar(value="115200")
         self.device_speed_status_var = tk.StringVar(value="Скорость не проверена")
         self.scan_rate_var = tk.StringVar(value="1000")
+        self.rate_calculation_mode_var = tk.StringVar(value=self.rate_settings.calculation_mode)
+        self.rate_alpha_var = tk.StringVar(value=str(self.rate_settings.alpha))
+        self.rate_fast_window_var = tk.StringVar(value=str(self.rate_settings.fast_window_s))
+        self.rate_turn_window_var = tk.StringVar(value=str(self.rate_settings.turn_search_window_s))
+        self.rate_display_window_var = tk.StringVar(value=str(self.rate_settings.display_window_s))
+        self.rate_v_min_var = tk.StringVar(value=str(self.rate_settings.v_min_deg_c_min))
+        self.rate_filter_mode_var = tk.StringVar(value=self.rate_settings.filter_mode)
+        self.rate_display_method_var = tk.StringVar(value=self.rate_settings.display_method)
         self.function_var = tk.StringVar(value="03 - Чтение регистров хранения")
         self.start_address_var = tk.StringVar(value="0500")
         self.address_base_var = tk.StringVar(value="Шестнадцатеричный")
@@ -1309,9 +1654,12 @@ class ElementCheckerApp(tk.Tk):
         ttk.Button(top_frame, text="Инженерное меню", command=self._open_engineering_window).grid(
             row=0, column=2, padx=(0, 12), sticky="w"
         )
-        ttk.Button(top_frame, text="Журнал", command=self._open_logs_window).grid(row=0, column=3, padx=(0, 12), sticky="w")
+        ttk.Button(top_frame, text="Расчет скорости", command=self._open_rate_settings).grid(
+            row=0, column=3, padx=(0, 12), sticky="w"
+        )
+        ttk.Button(top_frame, text="Журнал", command=self._open_logs_window).grid(row=0, column=4, padx=(0, 12), sticky="w")
         ttk.Button(top_frame, text="Действия пользователя", command=self._open_user_actions_window).grid(
-            row=0, column=4, padx=(0, 12), sticky="w"
+            row=0, column=5, padx=(0, 12), sticky="w"
         )
 
         self.status_var = tk.StringVar(value="Порт отключен")
@@ -1514,6 +1862,166 @@ class ElementCheckerApp(tk.Tk):
                 highlightthickness=2 if self.engineering_selected == (device_index, channel) else 0,
                 highlightbackground="black",
             )
+
+    def _sync_rate_settings_vars(self) -> None:
+        self.rate_calculation_mode_var.set("Сложный" if self.rate_settings.calculation_mode == "complex" else "Простой")
+        self.rate_alpha_var.set(str(self.rate_settings.alpha))
+        self.rate_fast_window_var.set(str(self.rate_settings.fast_window_s))
+        self.rate_turn_window_var.set(str(self.rate_settings.turn_search_window_s))
+        self.rate_display_window_var.set(str(self.rate_settings.display_window_s))
+        self.rate_v_min_var.set(str(self.rate_settings.v_min_deg_c_min))
+        self.rate_filter_mode_var.set(self.rate_settings.filter_mode)
+        self.rate_display_method_var.set(self.rate_settings.display_method)
+
+    def _rate_settings_from_vars(self) -> TemperatureRateSettings:
+        calculation_mode = "complex" if self.rate_calculation_mode_var.get() == "Сложный" else "simple"
+        display_window_s = float(self.rate_display_window_var.get().replace(",", "."))
+        if calculation_mode == "simple":
+            settings = TemperatureRateSettings(
+                calculation_mode=calculation_mode,
+                alpha=self.rate_settings.alpha,
+                fast_window_s=self.rate_settings.fast_window_s,
+                turn_search_window_s=self.rate_settings.turn_search_window_s,
+                display_window_s=display_window_s,
+                v_min_deg_c_min=self.rate_settings.v_min_deg_c_min,
+                filter_mode=self.rate_settings.filter_mode,
+                display_method=self.rate_settings.display_method,
+            )
+            validate_temperature_rate_settings(settings)
+            return settings
+
+        settings = TemperatureRateSettings(
+            calculation_mode=calculation_mode,
+            alpha=float(self.rate_alpha_var.get().replace(",", ".")),
+            fast_window_s=float(self.rate_fast_window_var.get().replace(",", ".")),
+            turn_search_window_s=float(self.rate_turn_window_var.get().replace(",", ".")),
+            display_window_s=display_window_s,
+            v_min_deg_c_min=float(self.rate_v_min_var.get().replace(",", ".")),
+            filter_mode=self.rate_filter_mode_var.get(),
+            display_method=self.rate_display_method_var.get(),
+        )
+        validate_temperature_rate_settings(settings)
+        return settings
+
+    def _refresh_rate_settings_state(self, _event: object = None) -> None:
+        complex_enabled = self.rate_calculation_mode_var.get() == "Сложный"
+        for widget, enabled_state in getattr(self, "rate_complex_controls", []):
+            try:
+                widget.configure(state=enabled_state if complex_enabled else "disabled")
+            except tk.TclError:
+                pass
+
+    def _open_rate_settings(self) -> None:
+        if self.rate_settings_window is not None and self.rate_settings_window.winfo_exists():
+            self.rate_settings_window.lift()
+            self.rate_settings_window.focus_set()
+            return
+
+        self._sync_rate_settings_vars()
+        window = tk.Toplevel(self)
+        window.title("Настройки расчета скорости")
+        window.transient(self)
+        window.resizable(False, False)
+        window.protocol("WM_DELETE_WINDOW", self._close_rate_settings)
+        self.rate_settings_window = window
+        self.rate_complex_controls = []
+
+        frame = ttk.LabelFrame(window, text="Алгоритм PT100, °C/мин")
+        frame.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="ew")
+        frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(3, weight=1)
+
+        ttk.Label(frame, text="Вариант расчета").grid(row=0, column=0, padx=8, pady=6, sticky="w")
+        mode_combo = ttk.Combobox(
+            frame,
+            textvariable=self.rate_calculation_mode_var,
+            values=("Простой", "Сложный"),
+            state="readonly",
+            width=12,
+        )
+        mode_combo.grid(row=0, column=1, padx=8, pady=6, sticky="ew")
+        mode_combo.bind("<<ComboboxSelected>>", self._refresh_rate_settings_state)
+
+        fields = [
+            ("alpha EMA", self.rate_alpha_var, "0.05", "1.0", "0.05"),
+            ("Короткое окно, с", self.rate_fast_window_var, "1", "120", "1"),
+            ("Окно разворота, с", self.rate_turn_window_var, "1", "300", "1"),
+            ("Окно графика, с", self.rate_display_window_var, "1", "3600", "1"),
+            ("Мертвая зона, °C/мин", self.rate_v_min_var, "0", "100", "0.1"),
+        ]
+        for row, (label, variable, from_value, to_value, increment) in enumerate(fields):
+            grid_row = row + 1
+            ttk.Label(frame, text=label).grid(row=grid_row, column=0, padx=8, pady=6, sticky="w")
+            spinbox = ttk.Spinbox(
+                frame,
+                from_=float(from_value),
+                to=float(to_value),
+                increment=float(increment),
+                textvariable=variable,
+                width=10,
+            )
+            spinbox.grid(row=grid_row, column=1, padx=8, pady=6, sticky="ew")
+            if variable is not self.rate_display_window_var:
+                self.rate_complex_controls.append((spinbox, "normal"))
+
+        ttk.Label(frame, text="Фильтр 3 точки").grid(row=1, column=2, padx=8, pady=6, sticky="w")
+        filter_combo = ttk.Combobox(
+            frame,
+            textvariable=self.rate_filter_mode_var,
+            values=("median", "average"),
+            state="readonly",
+            width=12,
+        )
+        filter_combo.grid(row=1, column=3, padx=8, pady=6, sticky="ew")
+        self.rate_complex_controls.append((filter_combo, "readonly"))
+
+        ttk.Label(frame, text="Скорость графика").grid(row=2, column=2, padx=8, pady=6, sticky="w")
+        method_combo = ttk.Combobox(
+            frame,
+            textvariable=self.rate_display_method_var,
+            values=("linear", "delta"),
+            state="readonly",
+            width=12,
+        )
+        method_combo.grid(row=2, column=3, padx=8, pady=6, sticky="ew")
+        self.rate_complex_controls.append((method_combo, "readonly"))
+
+        hint_label = ttk.Label(
+            frame,
+            text="linear: наклон прямой; delta: разность первой и последней точки",
+            anchor="w",
+        )
+        hint_label.grid(row=3, column=2, columnspan=2, padx=8, pady=6, sticky="ew")
+        self.rate_complex_controls.append((hint_label, "normal"))
+        self._refresh_rate_settings_state()
+
+        buttons = ttk.Frame(window)
+        buttons.grid(row=1, column=0, padx=12, pady=(6, 12), sticky="e")
+        ttk.Button(buttons, text="Сохранить", command=self._save_rate_settings).grid(row=0, column=0, padx=(0, 8), sticky="e")
+        ttk.Button(buttons, text="Закрыть", command=self._close_rate_settings).grid(row=0, column=1, sticky="e")
+
+    def _close_rate_settings(self) -> None:
+        self._sync_rate_settings_vars()
+        if self.rate_settings_window is not None:
+            self.rate_settings_window.destroy()
+            self.rate_settings_window = None
+
+    def _save_rate_settings(self) -> None:
+        try:
+            settings = self._rate_settings_from_vars()
+            save_temperature_rate_settings(self.rate_settings_path, settings)
+        except Exception as exc:
+            messagebox.showerror("Ошибка настроек скорости", str(exc), parent=self.rate_settings_window)
+            return
+
+        self.rate_settings = settings
+        self.temperature_rate_calculator.update_settings(settings)
+        self.temperature_rate_calculator.reset()
+        self._sync_rate_settings_vars()
+        self.status_var.set("Настройки расчета скорости применены")
+        self._append_log("Настройки расчета скорости применены")
+        self._append_user_action("Настройки расчета скорости сохранены")
+        messagebox.showinfo("Расчет скорости", "Настройки сохранены и применены", parent=self.rate_settings_window)
 
     def _open_settings(self) -> None:
         if self.settings_window is not None and self.settings_window.winfo_exists():
@@ -2656,6 +3164,7 @@ class ElementCheckerApp(tk.Tk):
         def save_db(
             temperature: float | None,
             raw_temperature: float | None,
+            rate_result: TemperatureRateResult | None,
             error_code: int | None,
             timer_code: int | None,
             valid: bool,
@@ -2685,6 +3194,11 @@ class ElementCheckerApp(tk.Tk):
                     emissivity=emissivity,
                     raw_temperature=raw_temperature,
                     temperature=temperature,
+                    filtered_temperature=rate_result.filtered_temperature if rate_result is not None else None,
+                    temperature_rate_fast=rate_result.fast_rate_deg_c_min if rate_result is not None else None,
+                    temperature_rate_display=rate_result.display_rate_deg_c_min if rate_result is not None else None,
+                    temperature_rate_state_code=rate_result.state_code if rate_result is not None else None,
+                    temperature_rate_reversal=rate_result.reversal if rate_result is not None else False,
                     error_code=error_code,
                     error_text=MEASUREMENT_ERROR_TEXT.get(error_code, "Неизвестно" if error_code is not None else ""),
                     timer_code=timer_code,
@@ -2703,7 +3217,7 @@ class ElementCheckerApp(tk.Tk):
                 self._set_temperature_color(device_index, channel, None)
                 self.status_var.set(f"Устройство {device_index + 1}, датчик {channel}: {result.message}")
                 self._append_log(f"Устройство {device_index + 1}, датчик {channel}: некорректный ответ - {result.message}")
-                save_db(None, None, None, None, False, result.message)
+                save_db(None, None, None, None, None, False, result.message)
                 return
 
             raw_temperature = decode_tm5104_temperature(result.data[:4])
@@ -2711,6 +3225,13 @@ class ElementCheckerApp(tk.Tk):
             timer_code = decode_ushort(result.data[6:8])
             measurement_valid = error_code == 0
             temperature = apply_sensor_conversion(raw_temperature, sensor) if measurement_valid else None
+            rate_result = None
+            if (
+                measurement_valid
+                and temperature is not None
+                and sensor_kind_code(sensor.sensor_type) == SENSOR_KIND_TEMPERATURE
+            ):
+                rate_result = self.temperature_rate_calculator.add_sample(device_index, channel, timestamp, temperature)
             history = self.temperature_history[device_index][channel - 1]
             if temperature is not None:
                 history.append(temperature)
@@ -2739,6 +3260,7 @@ class ElementCheckerApp(tk.Tk):
             save_db(
                 temperature,
                 raw_temperature,
+                rate_result,
                 error_code,
                 timer_code,
                 measurement_valid,
@@ -2749,7 +3271,7 @@ class ElementCheckerApp(tk.Tk):
             self._set_temperature_color(device_index, channel, None)
             self.status_var.set(f"Устройство {device_index + 1}, датчик {channel}: ошибка декодирования")
             self._append_log(f"Устройство {device_index + 1}, датчик {channel}: ошибка декодирования - {exc}")
-            save_db(None, None, None, None, False, f"ошибка декодирования: {exc}")
+            save_db(None, None, None, None, None, False, f"ошибка декодирования: {exc}")
 
     def _ensure_connected(self) -> bool:
         if not self.serial_port or not self.serial_port.is_open:
@@ -2867,6 +3389,11 @@ class ElementCheckerApp(tk.Tk):
             "emissivity",
             "raw_temperature",
             "temperature",
+            "filtered_temperature",
+            "temperature_rate_fast",
+            "temperature_rate_display",
+            "temperature_rate_state_code",
+            "temperature_rate_reversal",
             "measurement_error_code",
             "measurement_error_text",
             "timer_code",
@@ -2895,6 +3422,11 @@ class ElementCheckerApp(tk.Tk):
             "emissivity",
             "raw_temperature",
             "temperature",
+            "filtered_temperature",
+            "temperature_rate_fast",
+            "temperature_rate_display",
+            "temperature_rate_state_code",
+            "temperature_rate_reversal",
             "measurement_error_code",
             "timer_code",
             "sensor_type_code",
@@ -2965,6 +3497,7 @@ class ElementCheckerApp(tk.Tk):
         self.measurement_export_from = started_at
         self.next_hourly_export_at = started_at + timedelta(hours=1)
         self.pending_stop_export = False
+        self.temperature_rate_calculator.reset()
         now = time.monotonic()
         self.auto_poll_next_due = {
             (device_index, channel): now
@@ -3162,6 +3695,8 @@ class ElementCheckerApp(tk.Tk):
         self.db_writer.close()
         if self.settings_window is not None and self.settings_window.winfo_exists():
             self.settings_window.destroy()
+        if self.rate_settings_window is not None and self.rate_settings_window.winfo_exists():
+            self.rate_settings_window.destroy()
         if self.engineering_window is not None and self.engineering_window.winfo_exists():
             self.engineering_window.destroy()
         if self.logs_window is not None and self.logs_window.winfo_exists():
