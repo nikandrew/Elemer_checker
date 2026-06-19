@@ -26,6 +26,7 @@ MODELER_STABLE_MAX_STEP = 0.01
 MODELER_MAX_RATE_C_PER_S = 3.0
 MODELER_TARGET_RECALC_INTERVAL_S = 60.0
 MODELER_EXCURSION_CHANCE = 0.02
+MODELER_LOW_EXCURSION_TARGET_C = 0.0
 MODELER_SENSOR_TYPE_CODE = 0
 
 
@@ -277,10 +278,7 @@ class ElementCheckerModelerApp(ElementCheckerApp):
         return highest_limit + 1.0
 
     def _low_excursion_target(self, device_index: int, channel: int) -> float:
-        sensor = self.sensor_settings[device_index][channel - 1]
-        green_min, _green_max = self._green_range(device_index, channel)
-        lower_limit = sensor.tmin if sensor.tmin is not None else green_min
-        return lower_limit - 1.0
+        return MODELER_LOW_EXCURSION_TARGET_C
 
     def _measurement_from_raw(self, device_index: int, channel: int, raw_temperature: float | None) -> float | None:
         if raw_temperature is None:

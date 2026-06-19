@@ -1197,6 +1197,24 @@ def _optional_float(value: str) -> float | None:
 def color_level_for_measurement(temperature: float | None, valid: bool, sensor: SensorSettings) -> int:
     if not valid or temperature is None:
         return -1
+    cold_alarm_mode = (
+        sensor.temerg is not None
+        and sensor.tcrit is not None
+        and sensor.twar is not None
+        and sensor.temerg < sensor.tcrit < sensor.twar
+    )
+    if cold_alarm_mode:
+        if sensor.temerg is not None and temperature < sensor.temerg:
+            return 5
+        if sensor.tcrit is not None and temperature < sensor.tcrit:
+            return 4
+        if sensor.twar is not None and temperature < sensor.twar:
+            return 3
+        if sensor.tmax is not None and temperature > sensor.tmax:
+            return 2
+        if sensor.tmin is not None and temperature < sensor.tmin:
+            return 0
+        return 1
     if sensor.temerg is not None and temperature > sensor.temerg:
         return 5
     if sensor.tcrit is not None and temperature > sensor.tcrit:
